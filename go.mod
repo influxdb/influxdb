@@ -29,6 +29,7 @@ require (
 	github.com/google/btree v1.0.1
 	github.com/google/go-cmp v0.6.0
 	github.com/google/go-jsonnet v0.17.0
+	github.com/google/uuid v1.6.0
 	github.com/hashicorp/vault/api v1.0.2
 	github.com/influxdata/cron v0.0.0-20201006132531-4bb0a200dcbe
 	github.com/influxdata/flux v0.195.1
@@ -42,7 +43,7 @@ require (
 	github.com/jwilder/encoding v0.0.0-20170811194829-b4e1701a28ef
 	github.com/kevinburke/go-bindata v3.22.0+incompatible
 	github.com/mattn/go-isatty v0.0.19
-	github.com/mattn/go-sqlite3 v1.14.18
+	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/matttproud/golang_protobuf_extensions v1.0.4
 	github.com/mileusna/useragent v0.0.0-20190129205925-3e331f0949a5
 	github.com/mna/pigeon v1.0.1-0.20180808201053-bb0192cfc2ae
@@ -161,7 +162,6 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/flatbuffers v24.3.25+incompatible // indirect
 	github.com/google/s2a-go v0.1.7 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.2 // indirect
 	github.com/googleapis/gax-go/v2 v2.12.4 // indirect
 	github.com/gsterjov/go-libsecret v0.0.0-20161001094733-a6f4afe4910c // indirect

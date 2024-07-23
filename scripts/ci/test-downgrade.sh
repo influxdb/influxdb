@@ -29,7 +29,7 @@ function download_older_binary () {
 
     local -r archive="influxd-${target_version}.tar.gz"
     curl -sL -o "${dl_dir}/${archive}" "$dl_url"
-    echo "${dl_sha}  ${dl_dir}/${archive}" | sha256sum --check --
+    echo "${dl_sha}  ${dl_dir}/${archive}" | sha256sum -c --
     tar xzf "${dl_dir}/${archive}" -C "$dl_dir" --strip-components=1
     rm "${dl_dir}/${archive}"
     mv "${dl_dir}/influxd" "${dl_dir}/influxd-${target_version}"
