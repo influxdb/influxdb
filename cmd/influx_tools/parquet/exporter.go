@@ -353,10 +353,13 @@ func (e *exporter) exportMeasurement(ctx context.Context, shard *tsdb.Shard, mea
 	}
 
 	// Create a batch processor
-	series := creator.series[shard.ID()]
-	batcher, err := newBatcher(ctx, shard, measurement, series, creator.typeConverters, creator.nameResolutions)
-	if err != nil {
-		return fmt.Errorf("creating batcher failed: %w", err)
+	batcher := &batcher{
+		measurement: []byte(measurement),
+		shard:       shard,
+		series:      creator.series[shard.ID()],
+		converter:   creator.typeConverters,
+		nameMapping: creator.nameResolutions,
+		start:       models.MinNanoTime,
 	}
 
 	// Check if we do have data for the measurement and skip the shard if

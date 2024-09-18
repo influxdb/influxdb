@@ -8,7 +8,6 @@ import (
 
 	"github.com/influxdata/influxdb/models"
 	"github.com/influxdata/influxdb/tsdb"
-	"github.com/influxdata/influxql"
 )
 
 type row struct {
@@ -26,34 +25,6 @@ type batcher struct {
 
 	series []seriesEntry
 	start  int64
-}
-
-func newBatcher(
-	ctx context.Context,
-	shard *tsdb.Shard,
-	measurement string,
-	series []seriesEntry,
-	converter map[string]func(interface{}) (interface{}, error),
-	nameMapping map[string]string,
-) (*batcher, error) {
-	seriesCursor, err := shard.CreateSeriesCursor(
-		ctx,
-		tsdb.SeriesCursorRequest{},
-		influxql.MustParseExpr("_name = '"+measurement+"'"),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("getting series cursor failed: %w", err)
-	}
-	defer seriesCursor.Close()
-
-	return &batcher{
-		measurement: []byte(measurement),
-		shard:       shard,
-		series:      series,
-		converter:   converter,
-		nameMapping: nameMapping,
-		start:       models.MinNanoTime,
-	}, nil
 }
 
 func (b *batcher) reset() {
