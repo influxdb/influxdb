@@ -56,41 +56,41 @@ func (m *Main) Run(args ...string) error {
 	switch name {
 	case "", "help":
 		if err := help.NewCommand().Run(args...); err != nil {
-			return fmt.Errorf("help failed: %s", err)
+			return fmt.Errorf("help failed: %w", err)
 		}
 	case "compact-shard":
 		c := compact.NewCommand()
 		if err := c.Run(args); err != nil {
-			return fmt.Errorf("compact-shard failed: %s", err)
+			return fmt.Errorf("compact-shard failed: %w", err)
 		}
 	case "export":
 		c := export.NewCommand(&ossServer{logger: zap.NewNop()})
 		if err := c.Run(args); err != nil {
-			return fmt.Errorf("export failed: %s", err)
+			return fmt.Errorf("export failed: %w", err)
 		}
 	case "export-parquet":
 		c := parquet.NewCommand(&ossServer{logger: zap.NewNop()})
 		if err := c.Run(args); err != nil {
-			return fmt.Errorf("export failed: %s", err)
+			return fmt.Errorf("export failed: %w", err)
 		}
 	case "import":
 		c := importer.NewCommand(&ossServer{logger: zap.NewNop()})
 		if err := c.Run(args); err != nil {
-			return fmt.Errorf("import failed: %s", err)
+			return fmt.Errorf("import failed: %w", err)
 		}
 	case "gen-init":
 		c := geninit.NewCommand(&ossServer{logger: zap.NewNop()})
 		if err := c.Run(args); err != nil {
-			return fmt.Errorf("gen-init failed: %s", err)
+			return fmt.Errorf("gen-init failed: %w", err)
 		}
 	case "gen-exec":
 		deps := genexec.Dependencies{Server: &ossServer{logger: zap.NewNop()}}
 		c := genexec.NewCommand(deps)
 		if err := c.Run(args); err != nil {
-			return fmt.Errorf("gen-exec failed: %s", err)
+			return fmt.Errorf("gen-exec failed: %w", err)
 		}
 	default:
-		return fmt.Errorf(`unknown command "%s"`+"\n"+`Run 'influx-tools help' for usage`+"\n\n", name)
+		return fmt.Errorf("unknown command %q\nRun 'influx-tools help' for usage", name)
 	}
 
 	return nil
@@ -112,7 +112,7 @@ func (s *ossServer) Open(path string) (err error) {
 
 	// Validate the configuration.
 	if err = s.config.Validate(); err != nil {
-		return fmt.Errorf("validate config: %s", err)
+		return fmt.Errorf("validate config: %w", err)
 	}
 
 	if s.noClient {
