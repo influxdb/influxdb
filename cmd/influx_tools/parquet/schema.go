@@ -31,43 +31,7 @@ type schemaCreator struct {
 	conflicts map[string][]influxql.DataType
 
 	typeResolutions map[string]influxql.DataType
-	typeConverters  map[string]func(interface{}) (interface{}, error)
 	nameResolutions map[string]string
-}
-
-func newSchemaCreator(
-	measurement string,
-	shards []*tsdb.Shard,
-	typeResolutions map[string]influxql.DataType,
-	nameResolutions map[string]string,
-) *schemaCreator {
-	s := &schemaCreator{
-		measurement:     measurement,
-		shards:          shards,
-		series:          make(map[uint64][]seriesEntry, len(shards)),
-		typeResolutions: typeResolutions,
-		nameResolutions: nameResolutions,
-	}
-
-	// Setup the type converters for the conflicting fields
-	s.typeConverters = make(map[string]func(interface{}) (interface{}, error), len(s.typeResolutions))
-	for field, ftype := range s.typeResolutions {
-		switch ftype {
-		case influxql.Float:
-			s.typeConverters[field] = toFloat
-		case influxql.Unsigned:
-			s.typeConverters[field] = toUint
-		case influxql.Integer:
-			s.typeConverters[field] = toInt
-		case influxql.Boolean:
-			s.typeConverters[field] = toBool
-		case influxql.String:
-			s.typeConverters[field] = toString
-		default:
-			panic(fmt.Errorf("unknown converter %v for field %q", ftype, field))
-		}
-	}
-	return s
 }
 
 func (s *schemaCreator) extractSchema(ctx context.Context) error {

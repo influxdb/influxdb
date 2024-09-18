@@ -8,6 +8,7 @@ import (
 
 	"github.com/influxdata/influxdb/models"
 	"github.com/influxdata/influxdb/tsdb"
+	"github.com/influxdata/influxql"
 )
 
 type row struct {
@@ -20,11 +21,37 @@ type batcher struct {
 	measurement []byte
 	shard       *tsdb.Shard
 
-	converter   map[string]func(interface{}) (interface{}, error)
-	nameMapping map[string]string
+	typeResolutions map[string]influxql.DataType
+	converter       map[string]func(interface{}) (interface{}, error)
+	nameResolutions map[string]string
 
 	series []seriesEntry
 	start  int64
+}
+
+func (b *batcher) init() error {
+	// Setup the type converters for the conflicting fields
+	b.converter = make(map[string]func(interface{}) (interface{}, error), len(b.typeResolutions))
+	for field, ftype := range b.typeResolutions {
+		switch ftype {
+		case influxql.Float:
+			b.converter[field] = toFloat
+		case influxql.Unsigned:
+			b.converter[field] = toUint
+		case influxql.Integer:
+			b.converter[field] = toInt
+		case influxql.Boolean:
+			b.converter[field] = toBool
+		case influxql.String:
+			b.converter[field] = toString
+		default:
+			return fmt.Errorf("unknown converter %v for field %q", ftype, field)
+		}
+	}
+
+	b.start = models.MinNanoTime
+
+	return nil
 }
 
 func (b *batcher) reset() {
@@ -66,7 +93,7 @@ func (b *batcher) next(ctx context.Context) ([]row, error) {
 
 			// Prepare mappings
 			fname := field
-			if n, found := b.nameMapping[field]; found {
+			if n, found := b.nameResolutions[field]; found {
 				fname = n
 			}
 			converter := identity

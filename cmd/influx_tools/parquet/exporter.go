@@ -218,7 +218,13 @@ func (e *exporter) open(ctx context.Context) error {
 	// Collect the schemata for all measurments
 	e.schemata = make(map[string]*schemaCreator, len(e.measurements))
 	for _, m := range e.measurements {
-		creator := newSchemaCreator(m, e.shards, e.typeResolutions[m], e.nameResolutions[m])
+		creator := &schemaCreator{
+			measurement:     m,
+			shards:          e.shards,
+			series:          make(map[uint64][]seriesEntry, len(e.shards)),
+			typeResolutions: e.typeResolutions[m],
+			nameResolutions: e.nameResolutions[m],
+		}
 		if err := creator.extractSchema(ctx); err != nil {
 			return fmt.Errorf("extracting schema for measurement %q failed: %w", m, err)
 		}
@@ -354,12 +360,15 @@ func (e *exporter) exportMeasurement(ctx context.Context, shard *tsdb.Shard, mea
 
 	// Create a batch processor
 	batcher := &batcher{
-		measurement: []byte(measurement),
-		shard:       shard,
-		series:      creator.series[shard.ID()],
-		converter:   creator.typeConverters,
-		nameMapping: creator.nameResolutions,
-		start:       models.MinNanoTime,
+		measurement:     []byte(measurement),
+		shard:           shard,
+		series:          creator.series[shard.ID()],
+		typeResolutions: creator.typeResolutions,
+		nameResolutions: creator.nameResolutions,
+		start:           models.MinNanoTime,
+	}
+	if err := batcher.init(); err != nil {
+		return fmt.Errorf("creating batcher failed: %w", err)
 	}
 
 	// Check if we do have data for the measurement and skip the shard if
