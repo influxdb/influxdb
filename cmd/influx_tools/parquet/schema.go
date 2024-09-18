@@ -125,7 +125,7 @@ func (s *schemaCreator) extractSchema(ctx context.Context) (err error) {
 			s.fieldKeys = append(s.fieldKeys, name)
 		default:
 			// Unconvertible type
-			panic(fmt.Errorf("unconvertible field %q with type %v", name, ftype))
+			return fmt.Errorf("unconvertible field %q with type %v", name, ftype)
 		}
 	}
 	sort.Strings(s.fieldKeys)
@@ -216,7 +216,7 @@ func (s *schemaCreator) schema(info map[string]string) (*arrow.Schema, error) {
 		case influxql.Unsigned:
 			dtype = &arrow.Uint64Type{}
 		default:
-			panic(fmt.Errorf("unconvertible field %q", name))
+			return nil, fmt.Errorf("unconvertible field %q", name)
 		}
 		columns = append(columns, arrow.Field{
 			Name:     fname,

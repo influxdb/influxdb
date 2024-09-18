@@ -204,7 +204,7 @@ func (b *batcher) next(ctx context.Context) ([]row, error) {
 				}
 			default:
 				cursor.Close()
-				panic(fmt.Errorf("unexpected type %T", cursor))
+				return nil, fmt.Errorf("unexpected type %T", cursor)
 			}
 			cursor.Close()
 			end = min(end, fieldEnd)
