@@ -22,6 +22,7 @@ import (
 	"github.com/influxdata/flux/memory"
 	"github.com/influxdata/influxdb/cmd/influx_tools/server"
 	"github.com/influxdata/influxdb/models"
+	internal_errors "github.com/influxdata/influxdb/pkg/errors"
 	"github.com/influxdata/influxdb/services/meta"
 	"github.com/influxdata/influxdb/tsdb"
 	"github.com/influxdata/influxql"
@@ -351,7 +352,7 @@ func (e *exporter) export(ctx context.Context) error {
 	return nil
 }
 
-func (e *exporter) exportMeasurement(ctx context.Context, shard *tsdb.Shard, measurement string) error {
+func (e *exporter) exportMeasurement(ctx context.Context, shard *tsdb.Shard, measurement string) (err error) {
 	startMeasurement := time.Now()
 
 	// Get the cumulative scheme with all tags and fields for the measurement
@@ -418,7 +419,7 @@ func (e *exporter) exportMeasurement(ctx context.Context, shard *tsdb.Shard, mea
 	if err != nil {
 		return fmt.Errorf("creating file %q failed: %w", filename, err)
 	}
-	defer file.Close()
+	defer internal_errors.Capture(&err, file.Close)
 
 	writer, err := pqarrow.NewFileWriter(
 		schema,
@@ -429,7 +430,7 @@ func (e *exporter) exportMeasurement(ctx context.Context, shard *tsdb.Shard, mea
 	if err != nil {
 		return fmt.Errorf("creating parquet writer for file %q failed: %w", filename, err)
 	}
-	defer writer.Close()
+	defer internal_errors.Capture(&err, writer.Close)
 
 	// Prepare the record builder
 	builder := array.NewRecordBuilder(memory.DefaultAllocator, schema)
