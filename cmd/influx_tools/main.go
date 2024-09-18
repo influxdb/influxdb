@@ -15,6 +15,7 @@ import (
 	geninit "github.com/influxdata/influxdb/cmd/influx_tools/generate/init"
 	"github.com/influxdata/influxdb/cmd/influx_tools/help"
 	"github.com/influxdata/influxdb/cmd/influx_tools/importer"
+	"github.com/influxdata/influxdb/cmd/influx_tools/parquet"
 	"github.com/influxdata/influxdb/cmd/influx_tools/server"
 	"github.com/influxdata/influxdb/cmd/influxd/run"
 	"github.com/influxdata/influxdb/services/meta"
@@ -64,6 +65,11 @@ func (m *Main) Run(args ...string) error {
 		}
 	case "export":
 		c := export.NewCommand(&ossServer{logger: zap.NewNop()})
+		if err := c.Run(args); err != nil {
+			return fmt.Errorf("export failed: %s", err)
+		}
+	case "export-parquet":
+		c := parquet.NewCommand(&ossServer{logger: zap.NewNop()})
 		if err := c.Run(args); err != nil {
 			return fmt.Errorf("export failed: %s", err)
 		}
