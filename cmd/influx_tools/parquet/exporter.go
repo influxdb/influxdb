@@ -334,7 +334,13 @@ func (e *exporter) export(ctx context.Context) error {
 
 		for _, measurement := range e.measurements {
 			if err := e.exportMeasurement(ctx, shard, measurement); err != nil {
-				return fmt.Errorf("exporting measurement %q in shard %d failed: %w", measurement, shard.ID(), err)
+				var path string
+				if f, serr := shard.SeriesFile(); serr != nil {
+					path = "ERR:" + serr.Error()
+				} else {
+					path = f.Path()
+				}
+				return fmt.Errorf("exporting measurement %q in shard %d at %q failed: %w", measurement, shard.ID(), path, err)
 			}
 		}
 		fmt.Fprintf(e.writer, "Finished export of shard %d in %v...\n", shard.ID(), time.Since(start))
