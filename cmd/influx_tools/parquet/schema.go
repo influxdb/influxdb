@@ -143,6 +143,8 @@ func (s *schemaCreator) extractSchema(ctx context.Context) (err error) {
 
 func (s *schemaCreator) validate() (bool, error) {
 	var hasConflicts bool
+
+	// Check for conflicting field types
 	var typeConflicts []string
 	for field := range s.conflicts {
 		hasConflicts = true
@@ -151,9 +153,10 @@ func (s *schemaCreator) validate() (bool, error) {
 		}
 	}
 	if len(typeConflicts) > 0 {
-		return true, fmt.Errorf("unresolved type conflicts for %q", strings.Join(typeConflicts, ","))
+		return true, fmt.Errorf("unresolved type conflicts for %s", strings.Join(typeConflicts, ","))
 	}
 
+	// Check for name clashes between tags and fields
 	var nameConflicts []string
 	for _, field := range s.fieldKeys {
 		for _, tag := range s.tags {
@@ -166,7 +169,36 @@ func (s *schemaCreator) validate() (bool, error) {
 		}
 	}
 	if len(nameConflicts) > 0 {
-		return true, fmt.Errorf("unresolved name conflicts for %q", strings.Join(nameConflicts, ","))
+		return true, fmt.Errorf("unresolved name conflicts for %s", strings.Join(nameConflicts, ","))
+	}
+
+	// Check for name clashes after resolving field names
+	resolvedFieldKeys := make([]string, 0, len(s.fieldKeys))
+	for _, field := range s.fieldKeys {
+		if n, found := s.nameResolutions[field]; found {
+			resolvedFieldKeys = append(resolvedFieldKeys, n)
+		} else {
+			resolvedFieldKeys = append(resolvedFieldKeys, field)
+		}
+	}
+	var resolvedConflicts []string
+	for i, field := range resolvedFieldKeys {
+		origField := s.fieldKeys[i]
+		for _, tag := range s.tags {
+			if tag == field {
+				hasConflicts = true
+				resolvedConflicts = append(resolvedConflicts, "resolved '"+origField+"' with tag '"+tag+"'")
+			}
+		}
+		for j, f := range resolvedFieldKeys {
+			if i > j && field == f {
+				hasConflicts = true
+				resolvedConflicts = append(resolvedConflicts, "resolved '"+origField+"' with field '"+f+"'")
+			}
+		}
+	}
+	if len(resolvedConflicts) > 0 {
+		return true, fmt.Errorf("conflicts after field name resolution for %s", strings.Join(resolvedConflicts, ", "))
 	}
 
 	return hasConflicts, nil
