@@ -59,15 +59,23 @@ func (cmd *Command) Run(args []string) (err error) {
 	flags.BoolVar(&dryRun, "dry-run", false, "Print plan and exit")
 
 	if err := flags.Parse(args); err != nil {
-		return err
+		return fmt.Errorf("parsing flags failed: %w", err)
 	}
 
 	if database == "" {
 		return errors.New("database is required")
 	}
 
+	loggerCfg := zap.NewDevelopmentConfig()
+	loggerCfg.DisableStacktrace = true
+	loggerCfg.DisableCaller = true
+	cmd.Logger, err = loggerCfg.Build()
+	if err != nil {
+		return fmt.Errorf("creating logger failed: %w", err)
+	}
+
 	if err := cmd.server.Open(configPath); err != nil {
-		return err
+		return fmt.Errorf("opening server failed: %w", err)
 	}
 	defer cmd.server.Close()
 
@@ -78,20 +86,19 @@ func (cmd *Command) Run(args []string) (err error) {
 		TypeResolutions: typeResolutions,
 		NameResolutions: nameResolutions,
 		Output:          output,
-		Stderr:          cmd.Stderr,
 	}
-	exp, err := newExporter(cmd.server, cfg)
+	exp, err := newExporter(cmd.server, cfg, cmd.Logger)
 	if err != nil {
 		return err
 	}
 
 	ctx := context.Background()
 	if err := exp.open(ctx); err != nil {
-		return err
+		return fmt.Errorf("opening exporter failed: %w", err)
 	}
 	defer exp.close()
 
-	exp.printPlan()
+	exp.printPlan(cmd.Stderr)
 
 	if dryRun {
 		return nil

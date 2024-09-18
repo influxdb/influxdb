@@ -3,12 +3,12 @@ package parquet
 import (
 	"context"
 	"fmt"
-	"os"
 	"sort"
 
 	"github.com/influxdata/influxdb/models"
 	"github.com/influxdata/influxdb/tsdb"
 	"github.com/influxdata/influxql"
+	"go.uber.org/zap"
 )
 
 type row struct {
@@ -27,6 +27,8 @@ type batcher struct {
 
 	series []seriesEntry
 	start  int64
+
+	logger *zap.SugaredLogger
 }
 
 func (b *batcher) init() error {
@@ -107,7 +109,7 @@ func (b *batcher) next(ctx context.Context) ([]row, error) {
 				for i, t := range values.Timestamps {
 					v, err := converter(values.Values[i])
 					if err != nil {
-						fmt.Fprintf(os.Stderr, "converting %v of field %q failed: %v", values.Values[i], field, err)
+						b.logger.Errorf("converting %v of field %q failed: %v", values.Values[i], field, err)
 						continue
 					}
 
@@ -127,7 +129,7 @@ func (b *batcher) next(ctx context.Context) ([]row, error) {
 				for i, t := range values.Timestamps {
 					v, err := converter(values.Values[i])
 					if err != nil {
-						fmt.Fprintf(os.Stderr, "converting %v of field %q failed: %v", values.Values[i], field, err)
+						b.logger.Errorf("converting %v of field %q failed: %v", values.Values[i], field, err)
 						continue
 					}
 
@@ -147,7 +149,7 @@ func (b *batcher) next(ctx context.Context) ([]row, error) {
 				for i, t := range values.Timestamps {
 					v, err := converter(values.Values[i])
 					if err != nil {
-						fmt.Fprintf(os.Stderr, "converting %v of field %q failed: %v", values.Values[i], field, err)
+						b.logger.Errorf("converting %v of field %q failed: %v", values.Values[i], field, err)
 						continue
 					}
 
@@ -167,7 +169,7 @@ func (b *batcher) next(ctx context.Context) ([]row, error) {
 				for i, t := range values.Timestamps {
 					v, err := converter(values.Values[i])
 					if err != nil {
-						fmt.Fprintf(os.Stderr, "converting %v of field %q failed: %v", values.Values[i], field, err)
+						b.logger.Errorf("converting %v of field %q failed: %v", values.Values[i], field, err)
 						continue
 					}
 
@@ -187,7 +189,7 @@ func (b *batcher) next(ctx context.Context) ([]row, error) {
 				for i, t := range values.Timestamps {
 					v, err := converter(values.Values[i])
 					if err != nil {
-						fmt.Fprintf(os.Stderr, "converting %v of field %q failed: %v", values.Values[i], field, err)
+						b.logger.Errorf("converting %v of field %q failed: %v", values.Values[i], field, err)
 						continue
 					}
 

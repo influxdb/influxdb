@@ -17,6 +17,7 @@ import (
 	"github.com/apache/arrow/go/v16/arrow/array"
 	"github.com/apache/arrow/go/v16/parquet"
 	"github.com/apache/arrow/go/v16/parquet/pqarrow"
+	"go.uber.org/zap"
 
 	"github.com/influxdata/flux/memory"
 	"github.com/influxdata/influxdb/cmd/influx_tools/server"
@@ -33,7 +34,6 @@ type config struct {
 	TypeResolutions string
 	NameResolutions string
 	Output          string
-	Stderr          io.Writer
 }
 
 type exporter struct {
@@ -59,12 +59,13 @@ type exporter struct {
 	typeResolutions map[string]map[string]influxql.DataType
 	nameResolutions map[string]map[string]string
 
-	// Parquet information
-	writer      io.Writer
+	// Parquet metadata information
 	exportStart time.Time
+
+	logger *zap.SugaredLogger
 }
 
-func newExporter(server server.Interface, cfg *config) (*exporter, error) {
+func newExporter(server server.Interface, cfg *config, logger *zap.Logger) (*exporter, error) {
 	client := server.MetaClient()
 
 	db := client.Database(cfg.Database)
@@ -107,7 +108,7 @@ func newExporter(server server.Interface, cfg *config) (*exporter, error) {
 		typeResolutions: make(map[string]map[string]influxql.DataType),
 		nameResolutions: make(map[string]map[string]string),
 		filenames:       make(map[string]int),
-		writer:          cfg.Stderr,
+		logger:          logger.Sugar().Named("exporter"),
 	}
 
 	// Split the given measurements
@@ -238,24 +239,24 @@ func (e *exporter) close() error {
 	return e.store.Close()
 }
 
-func (e *exporter) printPlan() {
-	w := tabwriter.NewWriter(e.writer, 10, 8, 1, '\t', 0)
+func (e *exporter) printPlan(w io.Writer) {
+	tw := tabwriter.NewWriter(w, 10, 8, 1, '\t', 0)
 
-	fmt.Fprintf(e.writer, "Exporting source data from %s to %s in %d shard group(s):\n", e.startDate, e.endDate, len(e.groups))
-	fmt.Fprintln(w, "  Group\tStart\tEnd\t#Shards")
-	fmt.Fprintln(w, "  -----\t-----\t---\t-------")
+	fmt.Fprintf(w, "Exporting source data from %s to %s in %d shard group(s):\n", e.startDate, e.endDate, len(e.groups))
+	fmt.Fprintln(tw, "  Group\tStart\tEnd\t#Shards")
+	fmt.Fprintln(tw, "  -----\t-----\t---\t-------")
 	for _, g := range e.groups {
-		fmt.Fprintf(w, "  %d\t%s\t%s\t%d\n", g.ID, g.StartTime, g.EndTime, len(g.Shards))
+		fmt.Fprintf(tw, "  %d\t%s\t%s\t%d\n", g.ID, g.StartTime, g.EndTime, len(g.Shards))
 	}
-	fmt.Fprintln(w)
+	fmt.Fprintln(tw)
 
-	fmt.Fprintf(e.writer, "Creating the following schemata for %d measurement(s):\n", len(e.measurements))
+	fmt.Fprintf(w, "Creating the following schemata for %d measurement(s):\n", len(e.measurements))
 	for _, measurement := range e.measurements {
 		creator := e.schemata[measurement]
 		hasConflicts, err := creator.validate()
 		if err != nil {
 			fmt.Fprintf(
-				e.writer,
+				w,
 				"!!Measurement %q with conflict(s) in %d tag(s), %d field(s):\n",
 				measurement,
 				len(creator.tags),
@@ -263,7 +264,7 @@ func (e *exporter) printPlan() {
 			)
 		} else if hasConflicts {
 			fmt.Fprintf(
-				e.writer,
+				w,
 				"* Measurement %q with resolved conflicts in %d tag(s), %d field(s):\n",
 				measurement,
 				len(creator.tags),
@@ -271,7 +272,7 @@ func (e *exporter) printPlan() {
 			)
 		} else {
 			fmt.Fprintf(
-				e.writer,
+				w,
 				"  Measurement %q with %d tag(s) and  %d field(s):\n",
 				measurement,
 				len(creator.tags),
@@ -279,11 +280,11 @@ func (e *exporter) printPlan() {
 			)
 
 		}
-		fmt.Fprintln(w, "    Column\tKind\tDatatype")
-		fmt.Fprintln(w, "    ------\t----\t--------")
-		fmt.Fprintln(w, "    time\ttimestamp\ttimestamp (nanosecond)")
+		fmt.Fprintln(tw, "    Column\tKind\tDatatype")
+		fmt.Fprintln(tw, "    ------\t----\t--------")
+		fmt.Fprintln(tw, "    time\ttimestamp\ttimestamp (nanosecond)")
 		for _, name := range creator.tags {
-			fmt.Fprintf(w, "    %s\ttag\tstring\n", name)
+			fmt.Fprintf(tw, "    %s\ttag\tstring\n", name)
 		}
 		for _, name := range creator.fieldKeys {
 			ftype := creator.fields[name].String()
@@ -301,15 +302,15 @@ func (e *exporter) printPlan() {
 			if n, found := creator.nameResolutions[name]; found {
 				fname += " -> " + n
 			}
-			fmt.Fprintf(w, "    %s\tfield\t%s\n", fname, ftype)
+			fmt.Fprintf(tw, "    %s\tfield\t%s\n", fname, ftype)
 		}
 		if err != nil {
-			fmt.Fprintln(w, " ", err)
+			fmt.Fprintln(tw, " ", err)
 		}
-		fmt.Fprintln(w)
+		fmt.Fprintln(tw)
 	}
 
-	w.Flush()
+	tw.Flush()
 }
 
 func (e *exporter) export(ctx context.Context) error {
@@ -327,25 +328,25 @@ func (e *exporter) export(ctx context.Context) error {
 
 	// Export shard-wise
 	e.exportStart = time.Now()
-	fmt.Fprintf(e.writer, "Starting export at %v...\n", e.exportStart)
+	e.logger.Info("Starting export...")
 	for _, shard := range e.shards {
 		start := time.Now()
-		fmt.Fprintf(e.writer, "Starting export of shard %d...\n", shard.ID())
+		e.logger.Infof("Starting export of shard %d...", shard.ID())
 
-		for _, measurement := range e.measurements {
-			if err := e.exportMeasurement(ctx, shard, measurement); err != nil {
-				var path string
+		for _, m := range e.measurements {
+			if err := e.exportMeasurement(ctx, shard, m); err != nil {
+				path := "unknown"
 				if f, serr := shard.SeriesFile(); serr != nil {
-					path = "ERR:" + serr.Error()
+					e.logger.Errorf("determining series file failed: %v", serr)
 				} else {
 					path = f.Path()
 				}
-				return fmt.Errorf("exporting measurement %q in shard %d at %q failed: %w", measurement, shard.ID(), path, err)
+				return fmt.Errorf("exporting measurement %q in shard %d at %q failed: %w", m, shard.ID(), path, err)
 			}
 		}
-		fmt.Fprintf(e.writer, "Finished export of shard %d in %v...\n", shard.ID(), time.Since(start))
+		e.logger.Infof("Finished export of shard %d in %v...", shard.ID(), time.Since(start))
 	}
-	fmt.Fprintf(e.writer, "Finished export in %v...\n", time.Since(e.exportStart))
+	e.logger.Infof("Finished export in %v...", time.Since(e.exportStart))
 
 	return nil
 }
@@ -360,7 +361,7 @@ func (e *exporter) exportMeasurement(ctx context.Context, shard *tsdb.Shard, mea
 	}
 
 	if len(creator.fieldKeys) == 0 {
-		fmt.Fprintf(e.writer, "  Skipping measurement %q without fields\n", measurement)
+		e.logger.Warnf("  Skipping measurement %q without fields", measurement)
 		return nil
 	}
 
@@ -372,6 +373,7 @@ func (e *exporter) exportMeasurement(ctx context.Context, shard *tsdb.Shard, mea
 		typeResolutions: creator.typeResolutions,
 		nameResolutions: creator.nameResolutions,
 		start:           models.MinNanoTime,
+		logger:          e.logger.Named("batcher"),
 	}
 	if err := batcher.init(); err != nil {
 		return fmt.Errorf("creating batcher failed: %w", err)
@@ -384,12 +386,12 @@ func (e *exporter) exportMeasurement(ctx context.Context, shard *tsdb.Shard, mea
 		return fmt.Errorf("checking data failed: %w", err)
 	}
 	if len(rows) == 0 {
-		fmt.Fprintf(e.writer, "  Skipping measurement %q without data\n", measurement)
+		e.logger.Warnf("  Skipping measurement %q without data", measurement)
 		return nil
 	}
 	batcher.reset()
 
-	fmt.Fprintf(e.writer, "  Exporting measurement %q...\n", measurement)
+	e.logger.Infof("  Exporting measurement %q...", measurement)
 
 	// Create a parquet schema for writing the data
 	metadata := map[string]string{
@@ -455,11 +457,10 @@ func (e *exporter) exportMeasurement(ctx context.Context, shard *tsdb.Shard, mea
 		if err := writer.WriteBuffered(record); err != nil {
 			return fmt.Errorf("writing parquet file %q failed: %w", filename, err)
 		}
-		fmt.Fprintf(e.writer, "    exported %d rows in %v\n", len(rows), time.Since(last))
+		e.logger.Infof("    exported %d rows in %v", len(rows), time.Since(last))
 	}
-	fmt.Fprintf(
-		e.writer,
-		"  exported %d rows of measurement %q to %q in %v...\n",
+	e.logger.Infof(
+		"  exported %d rows of measurement %q to %q in %v...",
 		count,
 		measurement,
 		filename,
