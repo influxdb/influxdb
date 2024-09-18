@@ -9,6 +9,7 @@ import (
 	"github.com/apache/arrow/go/v16/arrow"
 
 	"github.com/influxdata/influxdb/models"
+	"github.com/influxdata/influxdb/pkg/errors"
 	"github.com/influxdata/influxdb/tsdb"
 	"github.com/influxdata/influxql"
 )
@@ -34,7 +35,7 @@ type schemaCreator struct {
 	nameResolutions map[string]string
 }
 
-func (s *schemaCreator) extractSchema(ctx context.Context) error {
+func (s *schemaCreator) extractSchema(ctx context.Context) (err error) {
 	// Iterate over the shards and extract all series
 	for _, shard := range s.shards {
 		// Extract all fields of the measurement
@@ -53,7 +54,7 @@ func (s *schemaCreator) extractSchema(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("getting series cursor failed: %w", err)
 		}
-		defer seriesCursor.Close()
+		defer errors.Capture(&err, seriesCursor.Close)
 
 		for {
 			cur, err := seriesCursor.Next()
