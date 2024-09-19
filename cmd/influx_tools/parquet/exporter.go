@@ -457,7 +457,7 @@ func (e *exporter) exportMeasurement(ctx context.Context, shard *tsdb.Shard, mea
 		record := e.convertData(rows, builder, creator.tags, creator.fieldKeys)
 
 		// Write data
-		if err := writer.WriteBuffered(record); err != nil {
+		if err := writer.Write(record); err != nil {
 			return fmt.Errorf("writing parquet file %q failed: %w", filename, err)
 		}
 		e.logger.Infof("    exported %d rows in %v", len(rows), time.Since(last))

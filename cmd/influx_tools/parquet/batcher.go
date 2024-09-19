@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"sort"
 
+	"go.uber.org/zap"
+
 	"github.com/influxdata/influxdb/models"
 	"github.com/influxdata/influxdb/tsdb"
 	"github.com/influxdata/influxql"
-	"go.uber.org/zap"
 )
 
 type row struct {
@@ -103,112 +104,39 @@ func (b *batcher) next(ctx context.Context) ([]row, error) {
 				converter = c
 			}
 			fieldEnd := models.MaxNanoTime
-			switch c := cursor.(type) {
-			case tsdb.IntegerArrayCursor:
-				values := c.Next()
-				for i, t := range values.Timestamps {
-					v, err := converter(values.Values[i])
-					if err != nil {
-						b.logger.Errorf("converting %v of field %q failed: %v", values.Values[i], field, err)
-						continue
-					}
 
-					if _, found := data[s.key][t]; !found {
-						data[s.key][t] = row{
-							timestamp: t,
-							tags:      tags,
-							fields:    make(map[string]interface{}),
-						}
-					}
-
-					data[s.key][t].fields[fname] = v
-					fieldEnd = t
-				}
-			case tsdb.FloatArrayCursor:
-				values := c.Next()
-				for i, t := range values.Timestamps {
-					v, err := converter(values.Values[i])
-					if err != nil {
-						b.logger.Errorf("converting %v of field %q failed: %v", values.Values[i], field, err)
-						continue
-					}
-
-					if _, found := data[s.key][t]; !found {
-						data[s.key][t] = row{
-							timestamp: t,
-							tags:      tags,
-							fields:    make(map[string]interface{}),
-						}
-					}
-
-					data[s.key][t].fields[fname] = v
-					fieldEnd = t
-				}
-			case tsdb.UnsignedArrayCursor:
-				values := c.Next()
-				for i, t := range values.Timestamps {
-					v, err := converter(values.Values[i])
-					if err != nil {
-						b.logger.Errorf("converting %v of field %q failed: %v", values.Values[i], field, err)
-						continue
-					}
-
-					if _, found := data[s.key][t]; !found {
-						data[s.key][t] = row{
-							timestamp: t,
-							tags:      tags,
-							fields:    make(map[string]interface{}),
-						}
-					}
-
-					data[s.key][t].fields[fname] = v
-					fieldEnd = t
-				}
-			case tsdb.BooleanArrayCursor:
-				values := c.Next()
-				for i, t := range values.Timestamps {
-					v, err := converter(values.Values[i])
-					if err != nil {
-						b.logger.Errorf("converting %v of field %q failed: %v", values.Values[i], field, err)
-						continue
-					}
-
-					if _, found := data[s.key][t]; !found {
-						data[s.key][t] = row{
-							timestamp: t,
-							tags:      tags,
-							fields:    make(map[string]interface{}),
-						}
-					}
-
-					data[s.key][t].fields[fname] = v
-					fieldEnd = t
-				}
-			case tsdb.StringArrayCursor:
-				values := c.Next()
-				for i, t := range values.Timestamps {
-					v, err := converter(values.Values[i])
-					if err != nil {
-						b.logger.Errorf("converting %v of field %q failed: %v", values.Values[i], field, err)
-						continue
-					}
-
-					if _, found := data[s.key][t]; !found {
-						data[s.key][t] = row{
-							timestamp: t,
-							tags:      tags,
-							fields:    make(map[string]interface{}),
-						}
-					}
-
-					data[s.key][t].fields[fname] = v
-					fieldEnd = t
-				}
-			default:
-				cursor.Close()
-				return nil, fmt.Errorf("unexpected type %T", cursor)
+			c, err := newValueCursor(cursor)
+			if err != nil {
+				return nil, fmt.Errorf("creating value cursor failed: %w", err)
 			}
-			cursor.Close()
+
+			for {
+				// Check if we do still have data
+				timestamp, ok := c.peek()
+				if !ok {
+					break
+				}
+
+				timestamp, value := c.next()
+				v, err := converter(value)
+				if err != nil {
+					b.logger.Errorf("converting %v of field %q failed: %v", value, field, err)
+					continue
+				}
+
+				if _, found := data[s.key][timestamp]; !found {
+					data[s.key][timestamp] = row{
+						timestamp: timestamp,
+						tags:      tags,
+						fields:    make(map[string]interface{}),
+					}
+				}
+
+				data[s.key][timestamp].fields[fname] = v
+				fieldEnd = timestamp
+			}
+
+			c.close()
 			end = min(end, fieldEnd)
 		}
 	}
