@@ -419,7 +419,6 @@ func (e *exporter) exportMeasurement(ctx context.Context, shard *tsdb.Shard, mea
 	if err != nil {
 		return fmt.Errorf("creating file %q failed: %w", filename, err)
 	}
-	defer internal_errors.Capture(&err, file.Close)
 
 	writer, err := pqarrow.NewFileWriter(
 		schema,
@@ -428,9 +427,12 @@ func (e *exporter) exportMeasurement(ctx context.Context, shard *tsdb.Shard, mea
 		pqarrow.NewArrowWriterProperties(pqarrow.WithCoerceTimestamps(arrow.Nanosecond)),
 	)
 	if err != nil {
+		if err := file.Close(); err != nil {
+			e.logger.Errorf("closing file failed: %v", err)
+		}
 		return fmt.Errorf("creating parquet writer for file %q failed: %w", filename, err)
 	}
-	defer internal_errors.Capture(&err, writer.Close)
+	defer internal_errors.Capture(&err, writer.Close)()
 
 	// Prepare the record builder
 	builder := array.NewRecordBuilder(memory.DefaultAllocator, schema)

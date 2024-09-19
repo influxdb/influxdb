@@ -54,7 +54,7 @@ func (s *schemaCreator) extractSchema(ctx context.Context) (err error) {
 		if err != nil {
 			return fmt.Errorf("getting series cursor failed: %w", err)
 		}
-		defer errors.Capture(&err, seriesCursor.Close)
+		defer errors.Capture(&err, seriesCursor.Close)()
 
 		for {
 			cur, err := seriesCursor.Next()

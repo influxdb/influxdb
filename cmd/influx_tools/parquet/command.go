@@ -97,7 +97,7 @@ func (cmd *Command) Run(args []string) (err error) {
 	if err := exp.open(ctx); err != nil {
 		return fmt.Errorf("opening exporter failed: %w", err)
 	}
-	defer internal_errors.Capture(&err, exp.close)
+	defer internal_errors.Capture(&err, exp.close)()
 
 	exp.printPlan(cmd.Stderr)
 
