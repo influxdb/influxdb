@@ -68,10 +68,11 @@ func (b *batcher) next(ctx context.Context) ([]row, error) {
 		return nil, fmt.Errorf("getting cursor iterator for %q failed: %w", string(b.measurement), err)
 	}
 
-	data := make(map[string]map[int64]row)
+	data := make(map[string]map[int64]row, len(b.series))
 	end := models.MaxNanoTime
+	var rowCount int
 	for _, s := range b.series {
-		data[s.key] = make(map[int64]row)
+		data[s.key] = make(map[int64]row, tsdb.DefaultMaxPointsPerBlock)
 		tags := make(map[string]string, len(s.tags))
 		for _, t := range s.tags {
 			tags[string(t.Key)] = string(t.Value)
@@ -130,6 +131,7 @@ func (b *batcher) next(ctx context.Context) ([]row, error) {
 						tags:      tags,
 						fields:    make(map[string]interface{}),
 					}
+					rowCount++
 				}
 
 				data[s.key][timestamp].fields[fname] = v
@@ -145,7 +147,7 @@ func (b *batcher) next(ctx context.Context) ([]row, error) {
 	}
 
 	// Extract the rows ordered by timestamp
-	var rows []row
+	rows := make([]row, 0, rowCount)
 	for _, tmap := range data {
 		for _, r := range tmap {
 			rows = append(rows, r)
