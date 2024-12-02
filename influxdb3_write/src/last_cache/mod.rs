@@ -1037,7 +1037,7 @@ struct ExtendedLastCacheState<'a> {
     key_column_values: Vec<&'a KeyValue>,
 }
 
-impl ExtendedLastCacheState<'_> {
+impl<'a> ExtendedLastCacheState<'a> {
     /// Produce a set of [`RecordBatch`]es from this extended state
     ///
     /// This converts any additional columns to arrow arrays which will extend the [`RecordBatch`]es
