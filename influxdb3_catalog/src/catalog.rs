@@ -19,7 +19,7 @@ use iox_time::Time;
 use observability_deps::tracing::{debug, info, warn};
 use parking_lot::RwLock;
 use schema::{InfluxColumnType, InfluxFieldType, Schema, SchemaBuilder};
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -167,23 +167,15 @@ impl CatalogSequenceNumber {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Catalog {
+    #[serde(flatten)]
     inner: RwLock<InnerCatalog>,
 }
 
 impl PartialEq for Catalog {
     fn eq(&self, other: &Self) -> bool {
         self.inner.read().eq(&other.inner.read())
-    }
-}
-
-impl Serialize for Catalog {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        self.inner.read().serialize(serializer)
     }
 }
 

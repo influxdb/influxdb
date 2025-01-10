@@ -88,7 +88,7 @@ mockall = { version = "0.13.0" }
 non-empty-string = "0.2.5"
 num_cpus = "1.16.0"
 object_store = "0.11.1"
-parking_lot = "0.12.1"
+parking_lot = { version = "0.12.1", features = ["serde"] }
 paste = "1.0.15"
 parquet = { version = "53.0.0", features = ["object_store"] }
 pbjson = "0.6.0"

@@ -120,8 +120,8 @@ snapshot_kind: text
       }
     ]
   ],
-  "sequence": 0,
+  "db_map": [],
   "host_id": "sample-host-id",
   "instance_id": "instance-id",
-  "db_map": []
+  "sequence": 0
 }
