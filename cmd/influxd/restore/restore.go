@@ -563,7 +563,7 @@ func (cmd *Command) unpackTar(tarFile string) error {
 		return fmt.Errorf("backup tarfile name incorrect format")
 	}
 
-	shardPath := filepath.Join(cmd.datadir, pathParts[0], pathParts[1], strings.Trim(pathParts[2], "0"))
+	shardPath := filepath.Join(cmd.datadir, pathParts[0], pathParts[1], strings.TrimLeft(pathParts[2], "0"))
 	os.MkdirAll(shardPath, 0755)
 
 	return tarstream.Restore(f, shardPath)
