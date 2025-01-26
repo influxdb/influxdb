@@ -65,6 +65,7 @@ type Config struct {
 	MaxEnqueuedWriteLimit   int               `toml:"max-enqueued-write-limit"`
 	EnqueuedWriteTimeout    time.Duration     `toml:"enqueued-write-timeout"`
 	TLS                     *tls.Config       `toml:"-"`
+	ReadTimeout             time.Duration     `toml:"read-timeout"`
 }
 
 // NewConfig returns a new Config with default settings.

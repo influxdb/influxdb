@@ -88,7 +88,8 @@ func NewService(c Config) *Service {
 		bindSocket:     c.BindSocket,
 		Handler:        handler,
 		httpServer: http.Server{
-			Handler: handler,
+			Handler:     handler,
+			ReadTimeout: c.ReadTimeout,
 		},
 		Logger: zap.NewNop(),
 	}
