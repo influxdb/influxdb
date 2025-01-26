@@ -387,7 +387,22 @@ func ParsePointsWithPrecision(buf []byte, defaultTime time.Time, precision strin
 
 }
 
+func isASCIIPrintable(s []byte) bool {
+	for i := 0; i < len(s); i++ {
+		/*ASCII printable characters are between 0x20 and 0x7E */
+		if s[i] < 0x20 || s[i] > 0x7E {
+			return false
+		}
+	}
+	return true
+}
+
 func parsePoint(buf []byte, defaultTime time.Time, precision string) (Point, error) {
+	/* ensure all characters of line protocol are ASCII printable characters */
+	isPrintable := isASCIIPrintable(buf)
+	if !isPrintable {
+		return nil, fmt.Errorf("non printable ASCII characters")
+	}
 	// scan the first block which is measurement[,tag1=value1,tag2=value2...]
 	pos, key, err := scanKey(buf, 0)
 	if err != nil {
