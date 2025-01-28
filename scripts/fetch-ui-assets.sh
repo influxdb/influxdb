@@ -31,10 +31,10 @@ curl -L https://github.com/influxdata/ui/releases/download/$UI_RELEASE/build.tar
 # Verify the checksums match; exit if they don't.
 case "$(uname -s)" in
     FreeBSD | Darwin)
-        echo "$(cat sha256.txt)" | shasum --algorithm 256 --check \
+        echo "$(cat sha256.txt)" | shasum --algorithm 256 -c \
             || { echo "Checksums did not match for downloaded UI assets!"; exit 1; } ;;
     Linux)
-        echo "$(cat sha256.txt)" | sha256sum --check -- \
+        echo "$(cat sha256.txt)" | sha256sum -c -- \
             || { echo "Checksums did not match for downloaded UI assets!"; exit 1; } ;;
     *)
         echo "The '$(uname -s)' operating system is not supported as a build host for the UI" >&2
