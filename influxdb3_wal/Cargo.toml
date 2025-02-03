@@ -27,6 +27,7 @@ futures-util.workspace = true
 hashbrown.workspace = true
 humantime.workspace = true
 indexmap.workspace = true
+miette.workspace = true
 object_store.workspace = true
 parking_lot.workspace = true
 serde.workspace = true

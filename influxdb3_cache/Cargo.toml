@@ -28,6 +28,7 @@ dashmap.workspace = true
 datafusion.workspace = true
 futures.workspace = true
 indexmap.workspace = true
+miette.workspace = true
 parking_lot.workspace = true
 object_store.workspace = true
 serde.workspace = true

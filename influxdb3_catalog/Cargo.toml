@@ -23,6 +23,7 @@ bimap.workspace = true
 chrono.workspace = true
 hashbrown.workspace = true
 indexmap.workspace = true
+miette.workspace = true
 parking_lot.workspace = true
 serde.workspace = true
 serde_json.workspace = true

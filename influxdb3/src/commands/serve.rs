@@ -1,6 +1,5 @@
 //! Entrypoint for InfluxDB 3 Core Server
 
-use anyhow::{bail, Context};
 use datafusion_util::config::register_iox_object_store;
 use influxdb3_cache::{
     distinct_cache::DistinctCacheProvider,
@@ -41,6 +40,7 @@ use influxdb3_write::{
 };
 use iox_query::exec::{DedicatedExecutor, Executor, ExecutorConfig};
 use iox_time::SystemProvider;
+use miette::{bail, Diagnostic, IntoDiagnostic, Result, WrapErr};
 use object_store::ObjectStore;
 use observability_deps::tracing::*;
 use panic_logging::SendPanicsToTracing;
@@ -65,43 +65,45 @@ pub const DEFAULT_HTTP_BIND_ADDR: &str = "0.0.0.0:8181";
 
 pub const DEFAULT_TELEMETRY_ENDPOINT: &str = "https://telemetry.v3.influxdata.com";
 
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
+#[diagnostic(
+    code(influxdb3::commands::serve),
+    url("https://github.com/influxdata/influxdb/issues/new?template=bug_report.md")
+)]
 pub enum Error {
-    #[error("Cannot parse object store config: {0}")]
+    #[error("Cannot parse object store config")]
     ObjectStoreParsing(#[from] influxdb3_clap_blocks::object_store::ParseError),
 
-    #[error("Tracing config error: {0}")]
+    #[error("Tracing config error")]
     TracingConfig(#[from] trace_exporters::Error),
 
-    #[error("Error initializing tokio runtime: {0}")]
+    #[error("Error initializing tokio runtime")]
     TokioRuntime(#[source] std::io::Error),
 
     #[error("Failed to bind address")]
     BindAddress(#[source] std::io::Error),
 
-    #[error("Server error: {0}")]
+    #[error("Server error")]
     Server(#[from] influxdb3_server::Error),
 
-    #[error("Write buffer error: {0}")]
+    #[error("Write buffer error")]
     WriteBuffer(#[from] influxdb3_write::write_buffer::Error),
 
-    #[error("invalid token: {0}")]
+    #[error("invalid token")]
     InvalidToken(#[from] hex::FromHexError),
 
-    #[error("failed to initialized write buffer: {0}")]
+    #[error("failed to initialized write buffer")]
     WriteBufferInit(#[source] anyhow::Error),
 
-    #[error("failed to initialize from persisted catalog: {0}")]
+    #[error("failed to initialize from persisted catalog")]
     InitializePersistedCatalog(#[source] influxdb3_write::persister::Error),
 
-    #[error("failed to initialize last cache: {0}")]
+    #[error("failed to initialize last cache")]
     InitializeLastCache(#[source] last_cache::Error),
 
-    #[error("failed to initialize distinct cache: {0:#}")]
+    #[error("failed to initialize distinct cache")]
     InitializeDistinctCache(#[source] influxdb3_cache::distinct_cache::ProviderError),
 }
-
-pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, clap::Parser)]
 pub struct Config {
@@ -381,11 +383,12 @@ impl ParquetCacheSizeMb {
 }
 
 impl FromStr for ParquetCacheSizeMb {
-    type Err = anyhow::Error;
+    type Err = miette::Report;
 
     fn from_str(s: &str) -> std::prelude::v1::Result<Self, Self::Err> {
         s.parse()
-            .context("failed to parse parquet cache size value as an unsigned integer")
+            .into_diagnostic()
+            .wrap_err("failed to parse parquet cache size value as an unsigned integer")
             .map(Self)
     }
 }
@@ -400,12 +403,13 @@ impl From<ParquetCachePrunePercent> for f64 {
 }
 
 impl FromStr for ParquetCachePrunePercent {
-    type Err = anyhow::Error;
+    type Err = miette::Report;
 
     fn from_str(s: &str) -> std::prelude::v1::Result<Self, Self::Err> {
         let p = s
             .parse::<f64>()
-            .context("failed to parse prune percent as f64")?;
+            .into_diagnostic()
+            .wrap_err("failed to parse prune percent as f64")?;
         if p <= 0.0 || p >= 1.0 {
             bail!("prune percent must be between 0 and 1");
         }
@@ -460,7 +464,8 @@ pub async fn command(config: Config) -> Result<()> {
     let object_store: Arc<dyn ObjectStore> = config
         .object_store_config
         .make_object_store()
-        .map_err(Error::ObjectStoreParsing)?;
+        .map_err(Error::ObjectStoreParsing)
+        .into_diagnostic()?;
 
     let (object_store, parquet_cache) = if !config.disable_parquet_mem_cache {
         let (object_store, parquet_cache) = create_cached_obj_store_and_oracle(
@@ -477,7 +482,7 @@ pub async fn command(config: Config) -> Result<()> {
         (object_store, None)
     };
 
-    let trace_exporter = config.tracing_config.build()?;
+    let trace_exporter = config.tracing_config.build().into_diagnostic()?;
 
     let parquet_store =
         ParquetStorage::new(Arc::clone(&object_store), StorageId::from("influxdb3"));
@@ -506,7 +511,8 @@ pub async fn command(config: Config) -> Result<()> {
             "datafusion",
             tokio_datafusion_config
                 .builder()
-                .map_err(Error::TokioRuntime)?,
+                .map_err(Error::TokioRuntime)
+                .into_diagnostic()?,
             Arc::clone(&metrics),
         ),
     ));
@@ -537,7 +543,8 @@ pub async fn command(config: Config) -> Result<()> {
         persister
             .load_or_create_catalog()
             .await
-            .map_err(Error::InitializePersistedCatalog)?,
+            .map_err(Error::InitializePersistedCatalog)
+            .into_diagnostic()?,
     );
     info!(instance_id = ?catalog.instance_id(), "catalog initialized");
 
@@ -545,14 +552,16 @@ pub async fn command(config: Config) -> Result<()> {
         Arc::clone(&catalog) as _,
         config.last_cache_eviction_interval.into(),
     )
-    .map_err(Error::InitializeLastCache)?;
+    .map_err(Error::InitializeLastCache)
+    .into_diagnostic()?;
 
     let distinct_cache = DistinctCacheProvider::new_from_catalog_with_background_eviction(
         Arc::clone(&time_provider) as _,
         Arc::clone(&catalog),
         config.distinct_cache_eviction_interval.into(),
     )
-    .map_err(Error::InitializeDistinctCache)?;
+    .map_err(Error::InitializeDistinctCache)
+    .into_diagnostic()?;
 
     let write_buffer_impl = WriteBufferImpl::new(WriteBufferImplArgs {
         persister: Arc::clone(&persister),
@@ -568,7 +577,8 @@ pub async fn command(config: Config) -> Result<()> {
         query_file_limit: config.query_file_limit,
     })
     .await
-    .map_err(|e| Error::WriteBufferInit(e.into()))?;
+    .map_err(|e| Error::WriteBufferInit(e.into()))
+    .into_diagnostic()?;
 
     info!("setting up background mem check for query buffer");
     background_buffer_checker(
@@ -596,7 +606,8 @@ pub async fn command(config: Config) -> Result<()> {
         trace_header_parser,
         Arc::clone(&telemetry_store),
         setup_processing_engine_env_manager(&config.processing_engine_config),
-    )?;
+    )
+    .into_diagnostic()?;
 
     let query_executor = Arc::new(QueryExecutorImpl::new(CreateQueryExecutorArgs {
         catalog: write_buffer.catalog(),
@@ -611,7 +622,8 @@ pub async fn command(config: Config) -> Result<()> {
 
     let listener = TcpListener::bind(*config.http_bind_address)
         .await
-        .map_err(Error::BindAddress)?;
+        .map_err(Error::BindAddress)
+        .into_diagnostic()?;
 
     let builder = ServerBuilder::new(common_state)
         .max_request_size(config.max_http_request_size)
@@ -621,7 +633,12 @@ pub async fn command(config: Config) -> Result<()> {
         .persister(persister)
         .tcp_listener(listener);
 
-    let server = if let Some(token) = config.bearer_token.map(hex::decode).transpose()? {
+    let server = if let Some(token) = config
+        .bearer_token
+        .map(hex::decode)
+        .transpose()
+        .into_diagnostic()?
+    {
         builder
             .authorizer(Arc::new(AllOrNothingAuthorizer::new(token)))
             .build()
@@ -629,7 +646,9 @@ pub async fn command(config: Config) -> Result<()> {
     } else {
         builder.build().await
     };
-    serve(server, frontend_shutdown, startup_timer).await?;
+    serve(server, frontend_shutdown, startup_timer)
+        .await
+        .into_diagnostic()?;
 
     Ok(())
 }

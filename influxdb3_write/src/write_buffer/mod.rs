@@ -46,6 +46,7 @@ use iox_query::QueryChunk;
 use iox_time::{Time, TimeProvider};
 use metric::Registry;
 use metrics::WriteMetrics;
+use miette::Diagnostic;
 use object_store::path::Path as ObjPath;
 use object_store::{ObjectMeta, ObjectStore};
 use observability_deps::tracing::{debug, error, warn};
@@ -56,7 +57,11 @@ use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
+#[diagnostic(
+    code(influxdb3_write::write_buffer),
+    url("https://github.com/influxdata/influxdb/issues/new?template=bug_report.md")
+)]
 pub enum Error {
     #[error("parsing for line protocol failed")]
     ParseError(WriteLineError),
@@ -68,22 +73,22 @@ pub enum Error {
         new: ColumnType,
     },
 
-    #[error("catalog update error: {0}")]
+    #[error("catalog update error")]
     CatalogUpdateError(#[from] influxdb3_catalog::catalog::Error),
 
-    #[error("error from persister: {0}")]
+    #[error("error from persister")]
     PersisterError(#[from] crate::persister::Error),
 
-    #[error("corrupt load state: {0}")]
+    #[error("corrupt load state")]
     CorruptLoadState(String),
 
-    #[error("database name error: {0}")]
+    #[error("database name error")]
     DatabaseNameError(#[from] NamespaceNameError),
 
-    #[error("error from table buffer: {0}")]
+    #[error("error from table buffer")]
     TableBufferError(#[from] table_buffer::Error),
 
-    #[error("error in last cache: {0}")]
+    #[error("error in last cache")]
     LastCacheError(#[from] last_cache::Error),
 
     #[error("database not found {db_name:?}")]
@@ -116,16 +121,16 @@ pub enum Error {
     )]
     DeleteLastCache(#[source] influxdb3_catalog::catalog::Error),
 
-    #[error("error from wal: {0}")]
+    #[error("error from wal")]
     WalError(#[from] influxdb3_wal::Error),
 
     #[error("cannot write to a read-only server")]
     NoWriteInReadOnly,
 
-    #[error("error in distinct value cache: {0}")]
+    #[error("error in distinct value cache")]
     DistinctCacheError(#[from] distinct_cache::ProviderError),
 
-    #[error("error: {0}")]
+    #[error("error")]
     AnyhowError(#[from] anyhow::Error),
 }
 

@@ -9,22 +9,27 @@ use influxdb3_client::plugin_development::{
 use influxdb3_internal_api::query_executor::QueryExecutor;
 use influxdb3_wal::TriggerSpecificationDefinition;
 use influxdb3_write::WriteBuffer;
+use miette::Diagnostic;
 use std::fmt::Debug;
 use std::sync::Arc;
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
+#[diagnostic(
+    code(influxdb3_processing_engine::manager),
+    url("https://github.com/influxdata/influxdb/issues/new?template=bug_report.md")
+)]
 pub enum ProcessingEngineError {
     #[error("database not found: {0}")]
     DatabaseNotFound(String),
 
-    #[error("catalog update error: {0}")]
+    #[error("catalog update error")]
     CatalogUpdateError(#[from] influxdb3_catalog::catalog::Error),
 
-    #[error("write buffer error: {0}")]
+    #[error("write buffer error")]
     WriteBufferError(#[from] influxdb3_write::write_buffer::Error),
 
-    #[error("wal error: {0}")]
+    #[error("wal error")]
     WalError(#[from] influxdb3_wal::Error),
 
     #[error("server not started with --plugin-dir")]
@@ -33,7 +38,7 @@ pub enum ProcessingEngineError {
     #[error("plugin not found: {0}")]
     PluginNotFound(String),
 
-    #[error("plugin error: {0}")]
+    #[error("plugin error")]
     PluginError(#[from] crate::plugins::PluginError),
 
     #[error("failed to shutdown trigger {trigger_name} in database {database}")]
@@ -48,7 +53,7 @@ pub enum ProcessingEngineError {
     #[error("request handler for trigger down")]
     RequestHandlerDown,
 
-    #[error("error installing python packages: {0}")]
+    #[error("error installing python packages")]
     PythonPackageError(#[from] PluginEnvironmentError),
 }
 

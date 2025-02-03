@@ -6,26 +6,32 @@ use influxdb_influxql_parser::statement::Statement;
 use iox_query::query_log::QueryLogEntries;
 use iox_query::{QueryDatabase, QueryNamespace};
 use iox_query_params::StatementParams;
+use miette::Diagnostic;
 use std::fmt::Debug;
 use std::sync::Arc;
+use thiserror::Error;
 use trace::ctx::SpanContext;
 use trace::span::{Span, SpanExt};
 use trace_http::ctx::RequestLogContext;
 use tracker::InstrumentedAsyncOwnedSemaphorePermit;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Diagnostic, Error)]
+#[diagnostic(
+    code(influxdb3_internal_api::query_executor),
+    url("https://github.com/influxdata/influxdb/issues/new?template=bug_report.md")
+)]
 pub enum QueryExecutorError {
     #[error("database not found: {db_name}")]
     DatabaseNotFound { db_name: String },
-    #[error("error while planning query: {0}")]
+    #[error("error while planning query")]
     QueryPlanning(#[source] DataFusionError),
-    #[error("error while executing plan: {0}")]
+    #[error("error while executing plan")]
     ExecuteStream(#[source] DataFusionError),
-    #[error("unable to compose record batches from databases: {0}")]
+    #[error("unable to compose record batches from databases")]
     DatabasesToRecordBatch(#[source] ArrowError),
-    #[error("unable to compose record batches from retention policies: {0}")]
+    #[error("unable to compose record batches from retention policies")]
     RetentionPoliciesToRecordBatch(#[source] ArrowError),
-    #[error("invokded a method that is not implemented: {0}")]
+    #[error("invokded a method that is not implemented")]
     MethodNotImplemented(&'static str),
     #[error(transparent)]
     Anyhow(#[from] anyhow::Error),

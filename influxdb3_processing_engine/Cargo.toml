@@ -25,6 +25,7 @@ influxdb3_internal_api = { path = "../influxdb3_internal_api" }
 influxdb3_py_api = { path = "../influxdb3_py_api" }
 influxdb3_wal = { path = "../influxdb3_wal" }
 influxdb3_write = { path = "../influxdb3_write" }
+miette.workspace = true
 observability_deps.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true

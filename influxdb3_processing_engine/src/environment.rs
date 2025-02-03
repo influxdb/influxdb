@@ -1,21 +1,26 @@
 use crate::environment::PluginEnvironmentError::PluginEnvironmentDisabled;
 #[cfg(feature = "system-py")]
 use crate::virtualenv::{initialize_venv, VenvError};
+use miette::Diagnostic;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use thiserror::Error;
 
-#[derive(Error, Debug)]
+#[derive(Debug, Error, Diagnostic)]
+#[diagnostic(
+    code(influxdb3_processing_engine::environment),
+    url("https://github.com/influxdata/influxdb/issues/new?template=bug_report.md")
+)]
 pub enum PluginEnvironmentError {
-    #[error("Package manager not available: {0}")]
+    #[error("Package manager not available")]
     PackageManagerNotFound(String),
-    #[error("External call failed: {0}")]
+    #[error("External call failed:")]
     InstallationFailed(#[from] std::io::Error),
     #[error("Plugin environment management is disabled")]
     PluginEnvironmentDisabled,
     #[cfg(feature = "system-py")]
-    #[error("Virtual environment error: {0}")]
+    #[error("Virtual environment error")]
     VenvError(#[from] VenvError),
 }
 

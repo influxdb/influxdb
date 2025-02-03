@@ -52,6 +52,7 @@ futures-util.workspace = true
 hashbrown.workspace = true
 hex.workspace = true
 indexmap.workspace = true
+miette.workspace = true
 object_store.workspace = true
 parking_lot.workspace = true
 parquet.workspace = true

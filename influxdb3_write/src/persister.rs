@@ -22,6 +22,7 @@ use influxdb3_cache::{last_cache, parquet_cache::ParquetFileDataToCache};
 use influxdb3_catalog::catalog::Catalog;
 use influxdb3_catalog::catalog::InnerCatalog;
 use iox_time::TimeProvider;
+use miette::Diagnostic;
 use object_store::path::Path as ObjPath;
 use object_store::ObjectStore;
 use observability_deps::tracing::info;
@@ -35,27 +36,31 @@ use std::sync::Arc;
 use thiserror::Error;
 use uuid::Uuid;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
+#[diagnostic(
+    code(influxdb3_write::persister),
+    url("https://github.com/influxdata/influxdb/issues/new?template=bug_report.md")
+)]
 pub enum Error {
-    #[error("datafusion error: {0}")]
+    #[error("datafusion error")]
     DataFusion(#[from] DataFusionError),
 
-    #[error("serde_json error: {0}")]
+    #[error("serde_json error")]
     SerdeJson(#[from] serde_json::Error),
 
-    #[error("object_store error: {0}")]
+    #[error("object_store error")]
     ObjectStore(#[from] object_store::Error),
 
-    #[error("parquet error: {0}")]
+    #[error("parquet error")]
     ParquetError(#[from] parquet::errors::ParquetError),
 
     #[error("tried to serialize a parquet file with no rows")]
     NoRows,
 
-    #[error("parse int error: {0}")]
+    #[error("parse int error")]
     ParseInt(#[from] std::num::ParseIntError),
 
-    #[error("failed to initialize last cache: {0}")]
+    #[error("failed to initialize last cache")]
     InitializingLastCache(#[from] last_cache::Error),
 }
 

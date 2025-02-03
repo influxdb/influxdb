@@ -16,6 +16,7 @@ use influxdb3_wal::{
 };
 use influxdb_line_protocol::FieldValue;
 use iox_time::Time;
+use miette::Diagnostic;
 use observability_deps::tracing::{debug, info, warn};
 use parking_lot::RwLock;
 use schema::{InfluxColumnType, InfluxFieldType, Schema, SchemaBuilder};
@@ -28,7 +29,11 @@ use thiserror::Error;
 
 const SOFT_DELETION_TIME_FORMAT: &str = "%Y%m%dT%H%M%S";
 
-#[derive(Debug, Error, Clone)]
+#[derive(Debug, Diagnostic, Error)]
+#[diagnostic(
+    code(influxdb3_catalog::catalog),
+    url("https://github.com/influxdata/influxdb/issues/new?template=bug_report.md")
+)]
 pub enum Error {
     #[error("table '{table_name}' already exists")]
     CatalogUpdatedElsewhere { table_name: Arc<str> },

@@ -41,11 +41,14 @@ use iox_http::write::{WriteParseError, WriteRequestUnifier};
 use iox_query_influxql_rewrite as rewrite;
 use iox_query_params::StatementParams;
 use iox_time::TimeProvider;
+use miette::Diagnostic;
 use observability_deps::tracing::{debug, error, info};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde::Serialize;
 use std::convert::Infallible;
+use std::error::Error as StdError;
+use std::fmt;
 use std::fmt::Debug;
 use std::future::Future;
 use std::pin::Pin;
@@ -59,7 +62,11 @@ use unicode_segmentation::UnicodeSegmentation;
 
 mod v1;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
+#[diagnostic(
+    code(influxdb3_server::http),
+    url("https://github.com/influxdata/influxdb/issues/new?template=bug_report.md")
+)]
 pub enum Error {
     /// The requested path has no registered handler.
     #[error("not found")]
@@ -101,12 +108,12 @@ pub enum Error {
     InvalidMimeType(String),
 
     /// NamespaceName validation error.
-    #[error("error validating namespace name: {0}")]
+    #[error("error validating namespace name")]
     InvalidNamespaceName(#[from] data_types::NamespaceNameError),
 
     /// Failure to decode the provided line protocol.
-    #[error("failed to parse line protocol: {0}")]
-    ParseLineProtocol(influxdb_line_protocol::Error),
+    #[error("failed to parse line protocol")]
+    ParseLineProtocol(#[from] influxdb_line_protocol::Error),
 
     /// The router is currently servicing the maximum permitted number of
     /// simultaneous requests.
@@ -126,7 +133,7 @@ pub enum Error {
     UnsupportedMethod,
 
     /// Hyper serving error
-    #[error("error serving http: {0}")]
+    #[error("error serving http")]
     ServingHttp(#[from] hyper::Error),
 
     /// Missing parameters for query
@@ -145,48 +152,48 @@ pub enum Error {
     #[error("missing query parameter 'db'")]
     MissingWriteParams,
 
-    #[error("the mime type specified was not valid UTF8: {0}")]
+    #[error("the mime type specified was not valid UTF8")]
     NonUtf8MimeType(#[from] FromUtf8Error),
 
     /// Serde decode error
-    #[error("serde error: {0}")]
+    #[error("serde error")]
     SerdeUrlDecoding(#[from] serde_urlencoded::de::Error),
 
     /// Arrow error
-    #[error("arrow error: {0}")]
+    #[error("arrow error")]
     Arrow(#[from] arrow::error::ArrowError),
 
     /// Hyper error
-    #[error("hyper http error: {0}")]
+    #[error("hyper http error")]
     Hyper(#[from] hyper::http::Error),
 
     /// WriteBuffer error
-    #[error("write buffer error: {0}")]
+    #[error("write buffer error")]
     WriteBuffer(#[from] influxdb3_write::write_buffer::Error),
 
     /// Persister error
-    #[error("persister error: {0}")]
+    #[error("persister error")]
     Persister(#[from] influxdb3_write::persister::Error),
 
     // ToStrError
-    #[error("to str error: {0}")]
+    #[error("to str error")]
     ToStr(#[from] hyper::header::ToStrError),
 
     // SerdeJsonError
-    #[error("serde json error: {0}")]
+    #[error("serde json error")]
     SerdeJson(#[from] serde_json::Error),
 
     // Influxdb3 Write
-    #[error("serde json error: {0}")]
+    #[error("serde json error")]
     Influxdb3Write(#[from] influxdb3_write::Error),
 
-    #[error("datafusion error: {0}")]
+    #[error("datafusion error")]
     Datafusion(#[from] DataFusionError),
 
-    #[error("io error: {0}")]
+    #[error("io error")]
     Io(#[from] std::io::Error),
 
-    #[error("query error: {0}")]
+    #[error("query error")]
     Query(#[from] QueryExecutorError),
 
     #[error(transparent)]
@@ -195,7 +202,7 @@ pub enum Error {
     #[error("partial write of line protocol occurred")]
     PartialLpWrite(BufferedWriteRequest),
 
-    #[error("error in InfluxQL statement: {0}")]
+    #[error("error in InfluxQL statement")]
     InfluxqlRewrite(#[from] rewrite::Error),
 
     #[error("must provide only one InfluxQl statement per query")]
@@ -212,7 +219,7 @@ pub enum Error {
     )]
     InfluxqlDatabaseMismatch { param_db: String, query_db: String },
 
-    #[error("v1 query API error: {0}")]
+    #[error("v1 query API error")]
     V1Query(#[from] v1::QueryError),
 
     #[error(transparent)]
@@ -221,14 +228,18 @@ pub enum Error {
     #[error("Python plugins not enabled on this server")]
     PythonPluginsNotEnabled,
 
-    #[error("Plugin error: {0}")]
+    #[error("Plugin error")]
     Plugin(#[from] influxdb3_processing_engine::plugins::PluginError),
 
-    #[error("Processing engine error: {0}")]
+    #[error("Processing engine error")]
     ProcessingEngine(#[from] influxdb3_processing_engine::manager::ProcessingEngineError),
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
+#[diagnostic(
+    code(influxdb3_server::http::auth),
+    url("https://github.com/influxdata/influxdb/issues/new?template=bug_report.md")
+)]
 pub enum AuthorizationError {
     #[error("the request was not authorized")]
     Unauthorized,
@@ -236,7 +247,7 @@ pub enum AuthorizationError {
     MalformedRequest,
     #[error("requestor is forbidden from requested resource")]
     Forbidden,
-    #[error("to str error: {0}")]
+    #[error("to str error")]
     ToStr(#[from] hyper::header::ToStrError),
 }
 
@@ -253,12 +264,12 @@ impl Error {
         match self {
             Self::Query(err @ QueryExecutorError::MethodNotImplemented(_)) => Response::builder()
                 .status(StatusCode::METHOD_NOT_ALLOWED)
-                .body(Body::from(err.to_string()))
+                .body(Body::from(ErrorOutput(err).to_string()))
                 .unwrap(),
             Self::WriteBuffer(err @ WriteBufferError::DatabaseNotFound { db_name: _ }) => {
                 Response::builder()
                     .status(StatusCode::NOT_FOUND)
-                    .body(Body::from(err.to_string()))
+                    .body(Body::from(ErrorOutput(err).to_string()))
                     .unwrap()
             }
             Self::WriteBuffer(
@@ -268,11 +279,11 @@ impl Error {
                 },
             ) => Response::builder()
                 .status(StatusCode::NOT_FOUND)
-                .body(Body::from(err.to_string()))
+                .body(Body::from(ErrorOutput(err).to_string()))
                 .unwrap(),
             Self::WriteBuffer(err @ WriteBufferError::DatabaseExists(_)) => Response::builder()
                 .status(StatusCode::BAD_REQUEST)
-                .body(Body::from(err.to_string()))
+                .body(Body::from(ErrorOutput(err).to_string()))
                 .unwrap(),
             Self::WriteBuffer(WriteBufferError::CatalogUpdateError(
                 err @ (CatalogError::TooManyDbs
@@ -280,7 +291,7 @@ impl Error {
                 | CatalogError::TooManyTables),
             )) => {
                 let err: ErrorMessage<()> = ErrorMessage {
-                    error: err.to_string(),
+                    error: ErrorOutput(err).to_string(),
                     data: None,
                 };
                 let serialized = serde_json::to_string(&err).unwrap();
@@ -304,7 +315,7 @@ impl Error {
             }
             Self::WriteBuffer(err @ WriteBufferError::ColumnDoesNotExist(_)) => {
                 let err: ErrorMessage<()> = ErrorMessage {
-                    error: err.to_string(),
+                    error: ErrorOutput(err).to_string(),
                     data: None,
                 };
                 let serialized = serde_json::to_string(&err).unwrap();
@@ -324,11 +335,11 @@ impl Error {
                 | last_cache::Error::InvalidKeyColumn { .. }
                 | last_cache::Error::ValueColumnDoesNotExist { .. } => Response::builder()
                     .status(StatusCode::BAD_REQUEST)
-                    .body(Body::from(lc_err.to_string()))
+                    .body(Body::from(ErrorOutput(lc_err).to_string()))
                     .unwrap(),
                 last_cache::Error::CacheDoesNotExist => Response::builder()
                     .status(StatusCode::NOT_FOUND)
-                    .body(Body::from(self.to_string()))
+                    .body(Body::from(ErrorOutput(self).to_string()))
                     .unwrap(),
             },
             Self::WriteBuffer(WriteBufferError::DistinctCacheError(ref mc_err)) => match mc_err {
@@ -338,21 +349,21 @@ impl Error {
                     | distinct_cache::CacheError::ConfigurationMismatch { .. } => {
                         Response::builder()
                             .status(StatusCode::BAD_REQUEST)
-                            .body(Body::from(mc_err.to_string()))
+                            .body(Body::from(ErrorOutput(mc_err).to_string()))
                             .unwrap()
                     }
                     distinct_cache::CacheError::Unexpected(_) => Response::builder()
                         .status(StatusCode::INTERNAL_SERVER_ERROR)
-                        .body(Body::from(mc_err.to_string()))
+                        .body(Body::from(ErrorOutput(mc_err).to_string()))
                         .unwrap(),
                 },
                 distinct_cache::ProviderError::CacheNotFound { .. } => Response::builder()
                     .status(StatusCode::NOT_FOUND)
-                    .body(Body::from(mc_err.to_string()))
+                    .body(Body::from(ErrorOutput(mc_err).to_string()))
                     .unwrap(),
                 distinct_cache::ProviderError::Unexpected(_) => Response::builder()
                     .status(StatusCode::INTERNAL_SERVER_ERROR)
-                    .body(Body::from(mc_err.to_string()))
+                    .body(Body::from(ErrorOutput(mc_err).to_string()))
                     .unwrap(),
             },
             Self::WriteBuffer(
@@ -362,7 +373,7 @@ impl Error {
                 | err @ WriteBufferError::TableAlreadyExists { .. },
             ) => Response::builder()
                 .status(StatusCode::CONFLICT)
-                .body(Body::from(err.to_string()))
+                .body(Body::from(ErrorOutput(err).to_string()))
                 .unwrap(),
             Self::DbName(e) => {
                 let err: ErrorMessage<()> = ErrorMessage {
@@ -401,7 +412,7 @@ impl Error {
             }
             Self::UnsupportedMethod => {
                 let err: ErrorMessage<()> = ErrorMessage {
-                    error: self.to_string(),
+                    error: ErrorOutput(self).to_string(),
                     data: None,
                 };
                 let serialized = serde_json::to_string(&err).unwrap();
@@ -413,7 +424,7 @@ impl Error {
             }
             Self::Query(QueryExecutorError::DatabaseNotFound { .. }) => {
                 let err: ErrorMessage<()> = ErrorMessage {
-                    error: self.to_string(),
+                    error: ErrorOutput(self).to_string(),
                     data: None,
                 };
                 let serialized = serde_json::to_string(&err).unwrap();
@@ -425,35 +436,49 @@ impl Error {
             }
             Self::SerdeJson(_) => Response::builder()
                 .status(StatusCode::BAD_REQUEST)
-                .body(Body::from(self.to_string()))
+                .body(Body::from(ErrorOutput(self).to_string()))
                 .unwrap(),
             Self::InvalidContentEncoding(_) => Response::builder()
                 .status(StatusCode::BAD_REQUEST)
-                .body(Body::from(self.to_string()))
+                .body(Body::from(ErrorOutput(self).to_string()))
                 .unwrap(),
             Self::InvalidContentType { .. } => Response::builder()
                 .status(StatusCode::UNSUPPORTED_MEDIA_TYPE)
-                .body(Body::from(self.to_string()))
+                .body(Body::from(ErrorOutput(self).to_string()))
                 .unwrap(),
             Self::SerdeUrlDecoding(_) => Response::builder()
                 .status(StatusCode::BAD_REQUEST)
-                .body(Body::from(self.to_string()))
+                .body(Body::from(ErrorOutput(self).to_string()))
                 .unwrap(),
             Self::MissingQueryParams
             | Self::MissingQueryV1Params
             | Self::MissingWriteParams
             | Self::MissingDeleteDatabaseParams => Response::builder()
                 .status(StatusCode::BAD_REQUEST)
-                .body(Body::from(self.to_string()))
+                .body(Body::from(ErrorOutput(self).to_string()))
                 .unwrap(),
             _ => {
-                let body = Body::from(self.to_string());
+                let body = Body::from(ErrorOutput(self).to_string());
                 Response::builder()
                     .status(StatusCode::INTERNAL_SERVER_ERROR)
                     .body(body)
                     .unwrap()
             }
         }
+    }
+}
+
+pub struct ErrorOutput<E: StdError>(E);
+
+impl<E: StdError> fmt::Display for ErrorOutput<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)?;
+        let mut underlying_err = self.0.source();
+        while let Some(err) = underlying_err {
+            write!(f, ": {}", err)?;
+            underlying_err = err.source();
+        }
+        Ok(())
     }
 }
 
@@ -1657,7 +1682,7 @@ async fn record_batch_stream_to_body(
                     mut self: Pin<&mut Self>,
                     ctx: &mut std::task::Context<'_>,
                 ) -> Poll<Self::Output> {
-                    match dbg!(self.stream.poll_next_unpin(ctx)) {
+                    match self.stream.poll_next_unpin(ctx) {
                         Poll::Ready(Some(batch)) => {
                             let batch = match batch {
                                 Ok(batch) => batch,

@@ -17,7 +17,6 @@ use arrow::{
     },
     record_batch::RecordBatch,
 };
-
 use arrow_schema::{Field, SchemaRef};
 use bytes::Bytes;
 use chrono::{format::SecondsFormat, DateTime};
@@ -27,6 +26,7 @@ use hyper::http::HeaderValue;
 use hyper::{header::ACCEPT, header::CONTENT_TYPE, Body, Request, Response, StatusCode};
 use influxdb_influxql_parser::select::{Dimension, GroupByClause};
 use iox_time::TimeProvider;
+use miette::Diagnostic;
 use observability_deps::tracing::info;
 use regex::Regex;
 use schema::{InfluxColumnType, INFLUXQL_MEASUREMENT_COLUMN_NAME, TIME_COLUMN_NAME};
@@ -252,8 +252,12 @@ enum Precision {
 /// This is used to catch errors that occur during the streaming process.
 /// [`anyhow::Error`] is used as a catch-all because if anything fails during
 /// that process it will result in a 500 INTERNAL ERROR.
-#[derive(Debug, thiserror::Error)]
-#[error("unexpected query error: {0:#}")]
+#[derive(Debug, Diagnostic, thiserror::Error)]
+#[diagnostic(
+    code(influxdb3_cache::distinct_cache::cache),
+    url("https://github.com/influxdata/influxdb/issues/new?template=bug_report.md")
+)]
+#[error("unexpected query error")]
 pub struct QueryError(#[from] anyhow::Error);
 
 /// The response structure returned by the v1 query API

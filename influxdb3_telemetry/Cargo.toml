@@ -15,6 +15,7 @@ futures-util.workspace = true
 reqwest.workspace = true
 parking_lot.workspace = true
 sysinfo.workspace = true
+miette.workspace = true
 num.workspace = true
 thiserror.workspace = true
 

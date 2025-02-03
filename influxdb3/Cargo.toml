@@ -45,6 +45,7 @@ hashbrown.workspace = true
 hex.workspace = true
 humantime.workspace = true
 libc.workspace = true
+miette.workspace = true
 num_cpus.workspace = true
 parking_lot.workspace = true
 rand.workspace = true

@@ -13,6 +13,7 @@ clippy::future_not_send
 use dotenvy::dotenv;
 use influxdb3_clap_blocks::tokio::TokioIoConfig;
 use influxdb3_process::VERSION_STRING;
+use miette::{IntoDiagnostic, Result};
 use observability_deps::tracing::warn;
 use trogging::{
     cli::LoggingConfigBuilderExt,
@@ -32,10 +33,6 @@ pub mod commands {
     pub mod show;
     pub mod test;
     pub mod write;
-}
-
-enum ReturnCode {
-    Failure = 1,
 }
 
 #[derive(Debug, clap::Parser)]
@@ -116,7 +113,7 @@ enum Command {
     Write(commands::write::Config),
 }
 
-fn main() -> Result<(), std::io::Error> {
+fn main() -> Result<()> {
     #[cfg(unix)]
     install_crash_handler(); // attempt to render a useful stacktrace to stderr
 
@@ -125,85 +122,42 @@ fn main() -> Result<(), std::io::Error> {
 
     let config: Config = clap::Parser::parse();
 
-    let tokio_runtime = config.runtime_config.builder()?.build()?;
+    let tokio_runtime = config
+        .runtime_config
+        .builder()
+        .into_diagnostic()?
+        .build()
+        .into_diagnostic()?;
 
     tokio_runtime.block_on(async move {
-        fn handle_init_logs(r: Result<TroggingGuard, trogging::Error>) -> TroggingGuard {
-            match r {
-                Ok(guard) => guard,
-                Err(e) => {
-                    eprintln!("Initializing logs failed: {e}");
-                    std::process::exit(ReturnCode::Failure as _);
-                }
-            }
-        }
-
         match config.command {
-            None => println!("command required, -h/--help for help"),
-            Some(Command::Enable(config)) => {
-                if let Err(e) = commands::enable::command(config).await {
-                    eprintln!("Enable command failed: {e}");
-                    std::process::exit(ReturnCode::Failure as _)
-                }
+            None => {
+                println!("command required, -h/--help for help");
+                Ok(())
             }
-            Some(Command::Create(config)) => {
-                if let Err(e) = commands::create::command(config).await {
-                    eprintln!("Create command failed: {e}");
-                    std::process::exit(ReturnCode::Failure as _)
-                }
-            }
-            Some(Command::Disable(config)) => {
-                if let Err(e) = commands::disable::command(config).await {
-                    eprintln!("Disable command failed: {e}");
-                    std::process::exit(ReturnCode::Failure as _)
-                }
-            }
-            Some(Command::Delete(config)) => {
-                if let Err(e) = commands::delete::command(config).await {
-                    eprintln!("Delete command failed: {e}");
-                    std::process::exit(ReturnCode::Failure as _)
-                }
-            }
+            Some(Command::Enable(config)) => commands::enable::command(config).await,
+            Some(Command::Create(config)) => commands::create::command(config).await,
+            Some(Command::Disable(config)) => commands::disable::command(config).await,
+            Some(Command::Delete(config)) => commands::delete::command(config).await,
             Some(Command::Serve(config)) => {
                 let _tracing_guard =
-                    handle_init_logs(init_logs_and_tracing(&config.logging_config));
-                if let Err(e) = commands::serve::command(config).await {
-                    eprintln!("Serve command failed: {e}");
-                    std::process::exit(ReturnCode::Failure as _)
-                }
+                    match init_logs_and_tracing(&config.logging_config).into_diagnostic() {
+                        Err(e) => return Err(e),
+                        Ok(guard) => guard,
+                    };
+                commands::serve::command(config).await
             }
-            Some(Command::Install(config)) => {
-                if let Err(e) = commands::install::command(config).await {
-                    eprintln!("Install command failed: {e}");
-                    std::process::exit(ReturnCode::Failure as _)
-                }
-            }
-            Some(Command::Show(config)) => {
-                if let Err(e) = commands::show::command(config).await {
-                    eprintln!("Show command failed: {e}");
-                    std::process::exit(ReturnCode::Failure as _)
-                }
-            }
-            Some(Command::Test(config)) => {
-                if let Err(e) = commands::test::command(config).await {
-                    eprintln!("Test command failed: {e}");
-                    std::process::exit(ReturnCode::Failure as _)
-                }
-            }
+            Some(Command::Install(config)) => commands::install::command(config).await,
+            Some(Command::Show(config)) => commands::show::command(config).await,
+            Some(Command::Test(config)) => commands::test::command(config).await,
             Some(Command::Query(config)) => {
-                if let Err(e) = commands::query::command(config).await {
-                    eprintln!("Query command failed: {e}");
-                    std::process::exit(ReturnCode::Failure as _)
-                }
+                commands::query::command(config).await.into_diagnostic()
             }
             Some(Command::Write(config)) => {
-                if let Err(e) = commands::write::command(config).await {
-                    eprintln!("Write command failed: {e}");
-                    std::process::exit(ReturnCode::Failure as _)
-                }
+                commands::write::command(config).await.into_diagnostic()
             }
         }
-    });
+    })?;
 
     Ok(())
 }

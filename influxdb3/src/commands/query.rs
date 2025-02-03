@@ -21,10 +21,10 @@ pub(crate) enum Error {
     #[error(transparent)]
     Query(#[from] QueryError),
 
-    #[error("invlid UTF8 received from server: {0}")]
+    #[error("invlid UTF8 received from server")]
     Utf8(#[from] Utf8Error),
 
-    #[error("io error: {0}")]
+    #[error("io error")]
     Io(#[from] io::Error),
 
     #[error(

@@ -18,6 +18,7 @@ use influxdb3_id::{ColumnId, DbId, SerdeVecMap, TableId};
 use influxdb_line_protocol::v3::SeriesValue;
 use influxdb_line_protocol::FieldValue;
 use iox_time::Time;
+use miette::Diagnostic;
 use schema::{InfluxColumnType, InfluxFieldType};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
@@ -30,7 +31,11 @@ use std::{any::Any, num::ParseIntError};
 use thiserror::Error;
 use tokio::sync::{oneshot, OwnedSemaphorePermit};
 
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
+#[diagnostic(
+    code(influxdb3_wal::lib),
+    url("https://github.com/influxdata/influxdb/issues/new?template=bug_report.md")
+)]
 pub enum Error {
     #[error("wal buffer full with {0} ops")]
     BufferFull(usize),
@@ -38,13 +43,13 @@ pub enum Error {
     #[error("error writing wal file: {0}")]
     WriteError(String),
 
-    #[error("deserialize error: {0}")]
+    #[error("deserialize error")]
     Serialize(#[from] crate::serialize::Error),
 
-    #[error("join error: {0}")]
+    #[error("join error")]
     Join(#[from] tokio::task::JoinError),
 
-    #[error("object store error: {0}")]
+    #[error("object store error")]
     ObjectStoreError(#[from] ::object_store::Error),
 
     #[error("wal is shutdown and not accepting writes")]

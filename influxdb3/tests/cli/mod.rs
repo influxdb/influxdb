@@ -360,10 +360,7 @@ async fn test_create_database_limit() {
     let result =
         run_with_confirmation_and_err(&["create", "database", "foo5", "--host", &server_addr]);
     debug!(result = ?result, "create database");
-    assert_contains!(
-        &result,
-        "Adding a new database would exceed limit of 5 databases"
-    );
+    assert_contains!(&result, "new database would exceed limit of 5 databases");
 }
 
 #[test_log::test(tokio::test)]
@@ -995,7 +992,7 @@ def process_writes(influxdb3_local, table_batches, args=None):
         trigger_name,
     ]);
     debug!(result = ?result, "delete enabled trigger without force");
-    assert_contains!(&result, "command failed");
+    assert_contains!(&result, "Cannot delete running plugin test_trigger");
 
     // Delete active trigger with force flag
     let result = run_with_confirmation(&[

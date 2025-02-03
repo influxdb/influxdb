@@ -7,10 +7,16 @@ pub use cache::{CreateLastCacheArgs, LastCacheTtl};
 mod provider;
 pub use provider::LastCacheProvider;
 mod table_function;
+use miette::Diagnostic;
 use schema::InfluxColumnType;
 pub use table_function::{LastCacheFunction, LAST_CACHE_UDTF_NAME};
+use thiserror::Error;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Diagnostic, Error, Clone)]
+#[diagnostic(
+    code(influxdb3_cache::last_cache),
+    url("https://github.com/influxdata/influxdb/issues/new?template=bug_report.md")
+)]
 pub enum Error {
     #[error("invalid cache size")]
     InvalidCacheSize,

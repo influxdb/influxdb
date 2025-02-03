@@ -12,6 +12,7 @@ iox_query_params.workspace = true
 # crates.io dependencies
 bytes.workspace = true
 hashbrown.workspace = true
+miette.workspace = true
 reqwest.workspace = true
 secrecy.workspace = true
 serde.workspace = true

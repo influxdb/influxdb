@@ -34,21 +34,26 @@ use influxdb3_wal::{
 };
 use iox_query::QueryChunk;
 use iox_time::Time;
+use miette::Diagnostic;
 use observability_deps::tracing::debug;
 use schema::TIME_COLUMN_NAME;
 use serde::{Deserialize, Serialize};
 use std::{fmt::Debug, sync::Arc, time::Duration};
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
+#[diagnostic(
+    code(influxdb3_write::lib),
+    url("https://github.com/influxdata/influxdb/issues/new?template=bug_report.md")
+)]
 pub enum Error {
-    #[error("object store path error: {0}")]
+    #[error("object store path error")]
     ObjStorePath(#[from] object_store::path::Error),
 
-    #[error("write buffer error: {0}")]
+    #[error("write buffer error")]
     WriteBuffer(#[from] write_buffer::Error),
 
-    #[error("persister error: {0}")]
+    #[error("persister error")]
     Persister(#[from] persister::Error),
 
     #[error(transparent)]

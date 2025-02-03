@@ -1,6 +1,6 @@
 use clap::Parser;
+use miette::{IntoDiagnostic, Result};
 use secrecy::{ExposeSecret, Secret};
-use std::error::Error;
 use url::Url;
 
 use crate::commands::common::Format;
@@ -47,7 +47,7 @@ pub struct DatabaseConfig {
     output_format: Format,
 }
 
-pub(crate) async fn command(config: Config) -> Result<(), Box<dyn Error>> {
+pub(crate) async fn command(config: Config) -> Result<()> {
     match config.cmd {
         SubCommand::Databases(DatabaseConfig {
             host_url,
@@ -55,7 +55,7 @@ pub(crate) async fn command(config: Config) -> Result<(), Box<dyn Error>> {
             show_deleted,
             output_format,
         }) => {
-            let mut client = influxdb3_client::Client::new(host_url)?;
+            let mut client = influxdb3_client::Client::new(host_url).into_diagnostic()?;
 
             if let Some(t) = auth_token {
                 client = client.with_auth_token(t.expose_secret());
@@ -66,11 +66,12 @@ pub(crate) async fn command(config: Config) -> Result<(), Box<dyn Error>> {
                 .with_format(output_format.into())
                 .with_show_deleted(show_deleted)
                 .send()
-                .await?;
+                .await
+                .into_diagnostic()?;
 
-            println!("{}", std::str::from_utf8(&resp_bytes)?);
+            println!("{}", std::str::from_utf8(&resp_bytes).into_diagnostic()?);
         }
-        SubCommand::System(cfg) => system::command(cfg).await?,
+        SubCommand::System(cfg) => system::command(cfg).await.into_diagnostic()?,
     }
 
     Ok(())

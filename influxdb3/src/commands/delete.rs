@@ -1,8 +1,8 @@
 use super::common::InfluxDb3Config;
 use influxdb3_client::Client;
+use miette::{IntoDiagnostic, Result};
 use secrecy::ExposeSecret;
 use secrecy::Secret;
-use std::error::Error;
 use std::io;
 use url::Url;
 
@@ -13,7 +13,7 @@ pub struct Config {
 }
 
 impl Config {
-    fn get_client(&self) -> Result<Client, Box<dyn Error>> {
+    fn get_client(&self) -> Result<Client> {
         match &self.cmd {
             SubCommand::Database(DatabaseConfig {
                 host_url,
@@ -56,7 +56,7 @@ impl Config {
                     },
                 ..
             }) => {
-                let mut client = Client::new(host_url.clone())?;
+                let mut client = Client::new(host_url.clone()).into_diagnostic()?;
                 if let Some(token) = &auth_token {
                     client = client.with_auth_token(token.expose_secret());
                 }
@@ -153,7 +153,7 @@ pub struct TriggerConfig {
     trigger_name: String,
 }
 
-pub async fn command(config: Config) -> Result<(), Box<dyn Error>> {
+pub async fn command(config: Config) -> Result<()> {
     let client = config.get_client()?;
     match config.cmd {
         SubCommand::Database(DatabaseConfig { database_name, .. }) => {
@@ -166,7 +166,10 @@ pub async fn command(config: Config) -> Result<(), Box<dyn Error>> {
             if confirmation.trim() != "yes" {
                 println!("Cannot delete database without confirmation");
             } else {
-                client.api_v3_configure_db_delete(&database_name).await?;
+                client
+                    .api_v3_configure_db_delete(&database_name)
+                    .await
+                    .into_diagnostic()?;
 
                 println!("Database {:?} deleted successfully", &database_name);
             }
@@ -178,7 +181,8 @@ pub async fn command(config: Config) -> Result<(), Box<dyn Error>> {
         }) => {
             client
                 .api_v3_configure_last_cache_delete(database_name, table, cache_name)
-                .await?;
+                .await
+                .into_diagnostic()?;
 
             println!("last cache deleted successfully");
         }
@@ -189,7 +193,8 @@ pub async fn command(config: Config) -> Result<(), Box<dyn Error>> {
         }) => {
             client
                 .api_v3_configure_distinct_cache_delete(database_name, table, cache_name)
-                .await?;
+                .await
+                .into_diagnostic()?;
 
             println!("distinct cache deleted successfully");
         }
@@ -208,7 +213,8 @@ pub async fn command(config: Config) -> Result<(), Box<dyn Error>> {
             } else {
                 client
                     .api_v3_configure_table_delete(&database_name, &table_name)
-                    .await?;
+                    .await
+                    .into_diagnostic()?;
 
                 println!(
                     "Table {:?}.{:?} deleted successfully",
@@ -227,7 +233,8 @@ pub async fn command(config: Config) -> Result<(), Box<dyn Error>> {
                     &trigger_name,
                     force,
                 )
-                .await?;
+                .await
+                .into_diagnostic()?;
             println!("Trigger {} deleted successfully", trigger_name);
         }
     }

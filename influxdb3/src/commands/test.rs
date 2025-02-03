@@ -1,10 +1,9 @@
 use crate::commands::common::{InfluxDb3Config, SeparatedKeyValue, SeparatedList};
-use anyhow::Context;
 use hashbrown::HashMap;
 use influxdb3_client::plugin_development::{SchedulePluginTestRequest, WalPluginTestRequest};
 use influxdb3_client::Client;
+use miette::{IntoDiagnostic, Result, WrapErr};
 use secrecy::ExposeSecret;
-use std::error::Error;
 
 #[derive(Debug, clap::Parser)]
 pub struct Config {
@@ -13,7 +12,7 @@ pub struct Config {
 }
 
 impl Config {
-    fn get_client(&self) -> Result<Client, Box<dyn Error>> {
+    fn get_client(&self) -> Result<Client> {
         match &self.cmd {
             SubCommand::WalPlugin(WalPluginConfig {
                 influxdb3_config:
@@ -33,7 +32,7 @@ impl Config {
                     },
                 ..
             }) => {
-                let mut client = Client::new(host_url.clone())?;
+                let mut client = Client::new(host_url.clone()).into_diagnostic()?;
                 if let Some(token) = &auth_token {
                     client = client.with_auth_token(token.expose_secret());
                 }
@@ -88,7 +87,7 @@ pub struct SchedulePluginConfig {
     pub schedule: Option<String>,
 }
 
-pub async fn command(config: Config) -> Result<(), Box<dyn Error>> {
+pub async fn command(config: Config) -> Result<()> {
     let client = config.get_client()?;
 
     match config.cmd {
@@ -104,8 +103,10 @@ pub async fn command(config: Config) -> Result<(), Box<dyn Error>> {
                 None => {
                     let file_path = plugin_config
                         .input_file
-                        .context("either --lp or --file must be provided")?;
-                    std::fs::read_to_string(file_path).context("unable to read input file")?
+                        .wrap_err("either --lp or --file must be provided")?;
+                    std::fs::read_to_string(file_path)
+                        .into_diagnostic()
+                        .wrap_err("unable to read input file")?
                 }
             };
 
@@ -116,7 +117,10 @@ pub async fn command(config: Config) -> Result<(), Box<dyn Error>> {
                 input_arguments,
             };
 
-            let response = client.wal_plugin_test(wal_plugin_test_request).await?;
+            let response = client
+                .wal_plugin_test(wal_plugin_test_request)
+                .await
+                .into_diagnostic()?;
 
             println!(
                 "{}",
@@ -138,7 +142,8 @@ pub async fn command(config: Config) -> Result<(), Box<dyn Error>> {
             };
             let response = client
                 .schedule_plugin_test(cron_plugin_test_request)
-                .await?;
+                .await
+                .into_diagnostic()?;
 
             println!(
                 "{}",

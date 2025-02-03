@@ -6,13 +6,13 @@ use base64::Engine as _;
 use hashbrown::HashMap;
 use influxdb3_client::Client;
 use influxdb3_wal::TriggerSpecificationDefinition;
+use miette::{IntoDiagnostic, Result};
 use rand::rngs::OsRng;
 use rand::RngCore;
 use secrecy::ExposeSecret;
 use secrecy::Secret;
 use sha2::Digest;
 use sha2::Sha512;
-use std::error::Error;
 use std::num::NonZeroUsize;
 use std::str;
 use std::time::Duration;
@@ -25,7 +25,7 @@ pub struct Config {
 }
 
 impl Config {
-    fn get_client(&self) -> Result<Client, Box<dyn Error>> {
+    fn get_client(&self) -> Result<Client> {
         match &self.cmd {
             SubCommand::Database(DatabaseConfig {
                 host_url,
@@ -68,7 +68,7 @@ impl Config {
                     },
                 ..
             }) => {
-                let mut client = Client::new(host_url.clone())?;
+                let mut client = Client::new(host_url.clone()).into_diagnostic()?;
                 if let Some(token) = &auth_token {
                     client = client.with_auth_token(token.expose_secret());
                 }
@@ -76,7 +76,7 @@ impl Config {
             }
             // We don't need a client for this, so we're just creating a
             // placeholder client with an unusable URL
-            SubCommand::Token => Ok(Client::new("http://recall.invalid")?),
+            SubCommand::Token => Ok(Client::new("http://recall.invalid").into_diagnostic()?),
         }
     }
 }
@@ -233,11 +233,14 @@ pub struct TriggerConfig {
     trigger_name: String,
 }
 
-pub async fn command(config: Config) -> Result<(), Box<dyn Error>> {
+pub async fn command(config: Config) -> Result<()> {
     let client = config.get_client()?;
     match config.cmd {
         SubCommand::Database(DatabaseConfig { database_name, .. }) => {
-            client.api_v3_configure_db_create(&database_name).await?;
+            client
+                .api_v3_configure_db_create(&database_name)
+                .await
+                .into_diagnostic()?;
 
             println!("Database {:?} created successfully", &database_name);
         }
@@ -270,7 +273,7 @@ pub async fn command(config: Config) -> Result<(), Box<dyn Error>> {
             }
 
             // Make the request:
-            match b.send().await? {
+            match b.send().await.into_diagnostic()? {
                 Some(def) => println!(
                     "new cache created: {}",
                     serde_json::to_string_pretty(&def)
@@ -301,7 +304,7 @@ pub async fn command(config: Config) -> Result<(), Box<dyn Error>> {
                 b = b.max_age(max_age.into());
             }
 
-            match b.send().await? {
+            match b.send().await.into_diagnostic()? {
                 Some(def) => println!(
                     "new cache created: {}",
                     serde_json::to_string_pretty(&def)
@@ -318,7 +321,8 @@ pub async fn command(config: Config) -> Result<(), Box<dyn Error>> {
         }) => {
             client
                 .api_v3_configure_table_create(&database_name, &table_name, tags, fields)
-                .await?;
+                .await
+                .into_diagnostic()?;
 
             println!(
                 "Table {:?}.{:?} created successfully",
@@ -371,8 +375,7 @@ pub async fn command(config: Config) -> Result<(), Box<dyn Error>> {
                 .await
             {
                 Err(e) => {
-                    eprintln!("Failed to create trigger: {}", e);
-                    return Err(e.into());
+                    return Err(e).into_diagnostic();
                 }
                 Ok(_) => println!("Trigger {} created successfully", trigger_name),
             }

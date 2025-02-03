@@ -2,4 +2,7 @@
 source: influxdb3/tests/cli/mod.rs
 expression: output
 ---
-Show command failed: system table 'meow' not found: please use a valid system table name: ["distinct_caches", "last_caches", "parquet_files", "processing_engine_triggers", "queries"]
+Error:   × system table 'meow' not found: please use a valid system table name:
+  │ ["distinct_caches", "last_caches", "parquet_files",
+  │ "processing_engine_triggers", "queries"]
+  │

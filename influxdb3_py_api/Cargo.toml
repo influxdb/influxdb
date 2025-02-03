@@ -20,6 +20,7 @@ influxdb3_wal = { path = "../influxdb3_wal" }
 influxdb3_catalog = {path = "../influxdb3_catalog"}
 influxdb3_internal_api = { path = "../influxdb3_internal_api" }
 iox_query_params.workspace = true
+miette.workspace = true
 observability_deps.workspace = true
 parking_lot.workspace = true
 futures.workspace = true

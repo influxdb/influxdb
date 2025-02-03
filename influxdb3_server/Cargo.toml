@@ -64,6 +64,7 @@ hashbrown.workspace = true
 hex.workspace = true
 hyper.workspace = true
 humantime.workspace = true
+miette.workspace = true
 mime.workspace = true
 object_store.workspace = true
 parking_lot.workspace = true

@@ -1,16 +1,22 @@
 use clap::Parser;
 use influxdb3_client::Client;
+use miette::Diagnostic;
 use secrecy::ExposeSecret;
 use serde::Deserialize;
+use thiserror::Error;
 
 use super::super::common::{Format, InfluxDb3Config};
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Diagnostic, Error)]
+#[diagnostic(
+    code(influxdb3::commands::show::system),
+    url("https://github.com/influxdata/influxdb/issues/new?template=bug_report.md")
+)]
 pub(crate) enum Error {
-    #[error("client error: {0}")]
+    #[error("client error")]
     InfluxDB3Client(#[from] influxdb3_client::Error),
 
-    #[error("deserializing show tables: {0}")]
+    #[error("deserializing show tables")]
     DeserializingShowTables(#[source] serde_json::Error),
 
     #[error("system table '{0}' not found: {1}")]

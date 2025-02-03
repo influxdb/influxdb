@@ -6,7 +6,9 @@ use influxdb3_catalog::catalog::{Catalog, TableDefinition};
 use influxdb3_id::{DbId, TableId};
 use influxdb3_wal::{DistinctCacheDefinition, WalContents, WalOp};
 use iox_time::TimeProvider;
+use miette::Diagnostic;
 use parking_lot::RwLock;
+use thiserror::Error;
 
 use crate::distinct_cache::cache::{MaxAge, MaxCardinality};
 
@@ -15,13 +17,17 @@ use super::{
     CacheError,
 };
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Diagnostic, Error)]
+#[diagnostic(
+    code(influxdb3_cache::distinct_cache::provider),
+    url("https://github.com/influxdata/influxdb/issues/new?template=bug_report.md")
+)]
 pub enum ProviderError {
-    #[error("cache error: {0}")]
+    #[error("cache error")]
     Cache(#[from] CacheError),
     #[error("cache not found")]
     CacheNotFound,
-    #[error("unexpected error: {0:#}")]
+    #[error("unexpected error")]
     Unexpected(#[from] anyhow::Error),
 }
 

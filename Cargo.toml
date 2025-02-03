@@ -83,6 +83,7 @@ insta = { version = "1.39", features = ["json", "redactions", "yaml"] }
 indexmap = { version = "2.2.6" }
 itertools = "0.13.0"
 libc = { version = "0.2" }
+miette = { version = "7.5", features = ["fancy"] }
 mime = "0.3.17"
 mockito = { version = "1.4.0", default-features = false }
 mockall = { version = "0.13.0" }

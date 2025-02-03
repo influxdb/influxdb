@@ -1,5 +1,6 @@
 use influxdb3_clap_blocks::plugins::ProcessingEngineConfig;
 use influxdb3_client::Client;
+use miette::{IntoDiagnostic, Result};
 use secrecy::{ExposeSecret, Secret};
 use url::Url;
 
@@ -15,13 +16,10 @@ pub enum SubCommand {
     Package(PackageConfig),
 }
 
-pub async fn command(config: Config) -> Result<(), anyhow::Error> {
+pub async fn command(config: Config) -> Result<()> {
     match config.cmd {
-        SubCommand::Package(package_config) => {
-            package_config.run_command().await?;
-        }
+        SubCommand::Package(package_config) => package_config.run_command().await,
     }
-    Ok(())
 }
 
 #[derive(Debug, clap::Args)]
@@ -52,19 +50,21 @@ pub struct PackageConfig {
 }
 
 impl PackageConfig {
-    async fn run_command(&self) -> Result<(), anyhow::Error> {
-        let mut client = Client::new(self.host_url.clone())?;
+    async fn run_command(&self) -> Result<()> {
+        let mut client = Client::new(self.host_url.clone()).into_diagnostic()?;
         if let Some(token) = &self.auth_token {
             client = client.with_auth_token(token.expose_secret());
         }
         if let Some(requirements_path) = &self.requirements {
             client
                 .api_v3_configure_processing_engine_trigger_install_requirements(requirements_path)
-                .await?;
+                .await
+                .into_diagnostic()?;
         } else {
             client
                 .api_v3_configure_plugin_environment_install_packages(self.packages.clone())
-                .await?;
+                .await
+                .into_diagnostic()?;
         }
         Ok(())
     }

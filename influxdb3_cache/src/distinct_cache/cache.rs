@@ -16,10 +16,16 @@ use influxdb3_catalog::catalog::TableDefinition;
 use influxdb3_id::{ColumnId, TableId};
 use influxdb3_wal::{DistinctCacheDefinition, FieldData, Row};
 use iox_time::TimeProvider;
+use miette::Diagnostic;
 use schema::{InfluxColumnType, InfluxFieldType};
 use serde::Deserialize;
+use thiserror::Error;
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Diagnostic, Error)]
+#[diagnostic(
+    code(influxdb3_cache::distinct_cache::cache),
+    url("https://github.com/influxdata/influxdb/issues/new?template=bug_report.md")
+)]
 pub enum CacheError {
     #[error("must pass a non-empty set of column ids")]
     EmptyColumnSet,
@@ -30,7 +36,7 @@ pub enum CacheError {
     NonTagOrStringColumn { attempted: InfluxColumnType },
     #[error("cannot overwrite an an existing cache: {message}")]
     ConfigurationMismatch { message: String },
-    #[error("unexpected error: {0}")]
+    #[error("unexpected error")]
     Unexpected(#[from] anyhow::Error),
 }
 

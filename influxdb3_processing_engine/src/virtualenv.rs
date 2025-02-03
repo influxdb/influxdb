@@ -1,3 +1,4 @@
+use miette::Diagnostic;
 use observability_deps::tracing::debug;
 use std::path::Path;
 use std::process::Command;
@@ -6,11 +7,15 @@ use thiserror::Error;
 
 static PYTHON_INIT: Once = Once::new();
 
-#[derive(Error, Debug)]
+#[derive(Debug, Diagnostic, Error)]
+#[diagnostic(
+    code(influxdb3_processing_engine::virtualenv),
+    url("https://github.com/influxdata/influxdb/issues/new?template=bug_report.md")
+)]
 pub enum VenvError {
-    #[error("Failed to initialize virtualenv: {0}")]
+    #[error("Failed to initialize virtualenv")]
     InitError(String),
-    #[error("Error shelling out: {0}")]
+    #[error("Error shelling out")]
     CommandError(#[from] std::io::Error),
 }
 

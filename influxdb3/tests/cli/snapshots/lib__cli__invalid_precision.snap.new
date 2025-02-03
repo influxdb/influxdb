@@ -1,0 +1,8 @@
+---
+source: influxdb3/tests/cli/mod.rs
+assertion_line: 1939
+expression: output
+---
+error: invalid value 'fake' for '--precision <PRECISION>': unrecognized precision unit
+
+For more information, try '--help'.

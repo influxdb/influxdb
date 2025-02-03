@@ -22,6 +22,7 @@ use influxdb3_write::Precision;
 use influxdb3_write::WriteBuffer;
 #[cfg(feature = "system-py")]
 use iox_time::TimeProvider;
+use miette::Diagnostic;
 use observability_deps::tracing::error;
 use std::fmt::Debug;
 use std::path::PathBuf;
@@ -32,7 +33,11 @@ use thiserror::Error;
 #[cfg(feature = "system-py")]
 use tokio::sync::mpsc;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
+#[diagnostic(
+    code(influxdb3_processing_engine::plugins),
+    url("https://github.com/influxdata/influxdb/issues/new?template=bug_report.md")
+)]
 pub enum PluginError {
     #[error("invalid database {0}")]
     InvalidDatabase(String),
@@ -53,13 +58,13 @@ pub enum PluginError {
     #[error(transparent)]
     AnyhowError(#[from] anyhow::Error),
 
-    #[error("reading plugin file: {0}")]
+    #[error("reading plugin file")]
     ReadPluginError(#[from] std::io::Error),
 
-    #[error("error executing plugin: {0}")]
+    #[error("error executing plugin")]
     PluginExecutionError(#[from] influxdb3_py_api::ExecutePluginError),
 
-    #[error("invalid cron syntax: {0}")]
+    #[error("invalid cron syntax")]
     InvalidCronSyntax(#[from] cron::error::Error),
 
     #[error("cron schedule never triggers: {0}")]

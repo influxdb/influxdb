@@ -5,11 +5,16 @@
 use crate::WalContents;
 use byteorder::{BigEndian, ReadBytesExt};
 use bytes::Bytes;
+use miette::Diagnostic;
 use std::io::Cursor;
 use std::mem::size_of;
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
+#[diagnostic(
+    code(influxdb3_wal::serialize),
+    url("https://github.com/influxdata/influxdb/issues/new?template=bug_report.md")
+)]
 pub enum Error {
     #[error("Invalid wal file identifier")]
     InvalidWalFile,
@@ -17,13 +22,13 @@ pub enum Error {
     #[error("crc32 checksum mismatch")]
     Crc32Mismatch,
 
-    #[error("bitcode error: {0}")]
+    #[error("bitcode error")]
     Bitcode(#[from] bitcode::Error),
 
-    #[error("IO error: {0}")]
+    #[error("IO error")]
     Io(#[from] std::io::Error),
 
-    #[error("try from slice error {0}")]
+    #[error("try from slice error")]
     TryFromSlice(#[from] std::array::TryFromSliceError),
 }
 

@@ -31,6 +31,7 @@ use influxdb3_processing_engine::plugins::ProcessingEngineEnvironmentManager;
 use influxdb3_telemetry::store::TelemetryStore;
 use influxdb3_write::persister::Persister;
 use iox_time::TimeProvider;
+use miette::Diagnostic;
 use observability_deps::tracing::error;
 use observability_deps::tracing::info;
 use service::hybrid;
@@ -50,24 +51,28 @@ use trace_http::tower::TraceLayer;
 
 const TRACE_SERVER_NAME: &str = "influxdb3_http";
 
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
+#[diagnostic(
+    code(influxdb3_server::lib),
+    url("https://github.com/influxdata/influxdb/issues/new?template=bug_report.md")
+)]
 pub enum Error {
-    #[error("hyper error: {0}")]
+    #[error("hyper error")]
     Hyper(#[from] hyper::Error),
 
-    #[error("http error: {0}")]
+    #[error("http error")]
     Http(#[from] http::Error),
 
     #[error("database not found {db_name}")]
     DatabaseNotFound { db_name: String },
 
-    #[error("datafusion error: {0}")]
+    #[error("datafusion error")]
     DataFusion(#[from] datafusion::error::DataFusionError),
 
-    #[error("influxdb3_write error: {0}")]
+    #[error("influxdb3_write error")]
     InfluxDB3Write(#[from] influxdb3_write::Error),
 
-    #[error("from hex error: {0}")]
+    #[error("from hex error")]
     FromHex(#[from] hex::FromHexError),
 }
 

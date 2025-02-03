@@ -15,7 +15,7 @@ pub(crate) enum Error {
     #[error(transparent)]
     Client(#[from] influxdb3_client::Error),
 
-    #[error("error reading file: {0}")]
+    #[error("error reading file")]
     Io(#[from] io::Error),
 
     #[error("No input from stdin detected, no string was passed in, and no file path was given")]

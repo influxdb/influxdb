@@ -594,6 +594,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "backtrace-ext"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "537beee3be4a18fb023b570f80e3ae28003db9167a751266b259926e25539d50"
+dependencies = [
+ "backtrace",
+]
+
+[[package]]
 name = "base64"
 version = "0.21.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -967,7 +976,7 @@ checksum = "24f165e7b643266ea80cb858aed492ad9280e3e05ce24d4a99d7d7b889b6a4d9"
 dependencies = [
  "strum",
  "strum_macros",
- "unicode-width",
+ "unicode-width 0.2.0",
 ]
 
 [[package]]
@@ -2787,6 +2796,7 @@ dependencies = [
  "iox_time",
  "libc",
  "metric",
+ "miette",
  "num_cpus",
  "object_store",
  "observability_deps",
@@ -2842,6 +2852,7 @@ dependencies = [
  "insta",
  "iox_time",
  "metric",
+ "miette",
  "object_store",
  "observability_deps",
  "parking_lot",
@@ -2868,6 +2879,7 @@ dependencies = [
  "influxdb3_wal",
  "insta",
  "iox_time",
+ "miette",
  "observability_deps",
  "parking_lot",
  "pretty_assertions",
@@ -2918,6 +2930,7 @@ dependencies = [
  "bytes",
  "hashbrown 0.15.2",
  "iox_query_params",
+ "miette",
  "mockito",
  "reqwest 0.11.27",
  "secrecy",
@@ -2947,6 +2960,7 @@ dependencies = [
  "influxdb_influxql_parser",
  "iox_query",
  "iox_query_params",
+ "miette",
  "thiserror 1.0.69",
  "trace",
  "trace_http",
@@ -3017,6 +3031,7 @@ dependencies = [
  "iox_query",
  "iox_time",
  "metric",
+ "miette",
  "object_store",
  "observability_deps",
  "parquet_file",
@@ -3044,6 +3059,7 @@ dependencies = [
  "influxdb3_internal_api",
  "influxdb3_wal",
  "iox_query_params",
+ "miette",
  "observability_deps",
  "parking_lot",
  "pyo3",
@@ -3101,6 +3117,7 @@ dependencies = [
  "iox_time",
  "metric",
  "metric_exporters",
+ "miette",
  "mime",
  "object_store",
  "observability_deps",
@@ -3160,6 +3177,7 @@ version = "0.1.0"
 dependencies = [
  "futures",
  "futures-util",
+ "miette",
  "mockall",
  "mockito",
  "num",
@@ -3206,6 +3224,7 @@ dependencies = [
  "influxdb-line-protocol",
  "influxdb3_id",
  "iox_time",
+ "miette",
  "object_store",
  "observability_deps",
  "parking_lot",
@@ -3258,6 +3277,7 @@ dependencies = [
  "iox_query",
  "iox_time",
  "metric",
+ "miette",
  "object_store",
  "observability_deps",
  "parking_lot",
@@ -3534,6 +3554,12 @@ dependencies = [
  "libc",
  "windows-sys 0.52.0",
 ]
+
+[[package]]
+name = "is_ci"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7655c9839580ee829dfacba1d1278c2b7883e50a277ff7541299489d6bdfdc45"
 
 [[package]]
 name = "is_terminal_polyfill"
@@ -3837,6 +3863,37 @@ dependencies = [
  "observability_deps",
  "prometheus",
  "workspace-hack",
+]
+
+[[package]]
+name = "miette"
+version = "7.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1a955165f87b37fd1862df2a59547ac542c77ef6d17c666f619d1ad22dd89484"
+dependencies = [
+ "backtrace",
+ "backtrace-ext",
+ "cfg-if",
+ "miette-derive",
+ "owo-colors",
+ "supports-color",
+ "supports-hyperlinks",
+ "supports-unicode",
+ "terminal_size",
+ "textwrap",
+ "thiserror 1.0.69",
+ "unicode-width 0.1.14",
+]
+
+[[package]]
+name = "miette-derive"
+version = "7.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf45bf44ab49be92fd1227a3be6fc6f617f1a337c06af54981048574d8783147"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.95",
 ]
 
 [[package]]
@@ -4212,6 +4269,12 @@ name = "overload"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
+
+[[package]]
+name = "owo-colors"
+version = "4.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb37767f6569cd834a413442455e0f066d0d522de8630436e2a1761d9726ba56"
 
 [[package]]
 name = "panic_logging"
@@ -6068,6 +6131,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 
 [[package]]
+name = "supports-color"
+version = "3.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c64fc7232dd8d2e4ac5ce4ef302b1d81e0b80d055b9d77c7c4f51f6aa4c867d6"
+dependencies = [
+ "is_ci",
+]
+
+[[package]]
+name = "supports-hyperlinks"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "804f44ed3c63152de6a9f90acbea1a110441de43006ea51bcce8f436196a288b"
+
+[[package]]
+name = "supports-unicode"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7401a30af6cb5818bb64852270bb722533397edcfc7344954a38f420819ece2"
+
+[[package]]
 name = "syn"
 version = "1.0.109"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6186,6 +6270,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "terminal_size"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5352447f921fda68cf61b4101566c0bdb5104eff6804d0678e5227580ab6a4e9"
+dependencies = [
+ "rustix",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "termtree"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6231,6 +6325,16 @@ dependencies = [
  "tracing-log",
  "tracing-subscriber",
  "workspace-hack",
+]
+
+[[package]]
+name = "textwrap"
+version = "0.16.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "23d434d3f8967a09480fb04132ebe0a3e088c173e6d0ee7897abbdf4eab0f8b9"
+dependencies = [
+ "unicode-linebreak",
+ "unicode-width 0.1.14",
 ]
 
 [[package]]
@@ -6900,6 +7004,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "adb9e6ca4f869e1180728b7950e35922a7fc6397f7b641499e8f3ef06e50dc83"
 
 [[package]]
+name = "unicode-linebreak"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b09c83c3c29d37506a3e260c08c03743a6bb66a9cd432c6934ab501a190571f"
+
+[[package]]
 name = "unicode-normalization"
 version = "0.1.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6919,6 +7029,12 @@ name = "unicode-segmentation"
 version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6ccf251212114b54433ec949fd6a7841275f9ada20dddd2f29e9ceea4501493"
+
+[[package]]
+name = "unicode-width"
+version = "0.1.14"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7dd6e30e90baa6f72411720665d41d89b9a3d039dc45b8faea1ddd07f617f6af"
 
 [[package]]
 name = "unicode-width"

@@ -7,22 +7,24 @@ use crate::plugin_development::{
 use bytes::Bytes;
 use hashbrown::HashMap;
 use iox_query_params::StatementParam;
+use miette::Diagnostic;
 use reqwest::{Body, IntoUrl, Method, StatusCode};
 use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
 use std::{fmt::Display, num::NonZeroUsize, string::FromUtf8Error, time::Duration};
+use thiserror::Error;
 use url::Url;
 
 /// Primary error type for the [`Client`]
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Error, Diagnostic)]
 pub enum Error {
-    #[error("base URL error: {0}")]
+    #[error("base URL error")]
     BaseUrl(#[source] reqwest::Error),
 
-    #[error("request URL error: {0}")]
+    #[error("request URL error")]
     RequestUrl(#[from] url::ParseError),
 
-    #[error("failed to read the API response bytes: {0}")]
+    #[error("failed to read the API response bytes")]
     Bytes(#[source] reqwest::Error),
 
     #[error(
@@ -35,13 +37,13 @@ pub enum Error {
         source: iox_query_params::Error,
     },
 
-    #[error("invalid UTF8 in response: {0}")]
+    #[error("invalid UTF8 in response")]
     InvalidUtf8(#[from] FromUtf8Error),
 
-    #[error("failed to parse JSON response: {0}")]
+    #[error("failed to parse JSON response")]
     Json(#[source] reqwest::Error),
 
-    #[error("failed to parse plaintext response: {0}")]
+    #[error("failed to parse plaintext response")]
     Text(#[source] reqwest::Error),
 
     #[error("server responded with error [{code}]: {message}")]
@@ -55,7 +57,7 @@ pub enum Error {
         source: reqwest::Error,
     },
 
-    #[error("unrecognized precision unit: {0}")]
+    #[error("unrecognized precision unit")]
     UnrecognizedUnit(String),
 }
 

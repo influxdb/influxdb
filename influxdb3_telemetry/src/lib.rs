@@ -5,17 +5,22 @@ mod sender;
 mod stats;
 pub mod store;
 
+use miette::Diagnostic;
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
+#[diagnostic(
+    code(influxdb3_telemetry::lib),
+    url("https://github.com/influxdata/influxdb/issues/new?template=bug_report.md")
+)]
 pub enum TelemetryError {
-    #[error("cannot serialize to JSON: {0}")]
+    #[error("cannot serialize to JSON")]
     CannotSerializeJson(#[from] serde_json::Error),
 
-    #[error("failed to get pid: {0}")]
+    #[error("failed to get pid")]
     CannotGetPid(&'static str),
 
-    #[error("cannot send telemetry: {0}")]
+    #[error("cannot send telemetry")]
     CannotSendToTelemetryServer(#[from] reqwest::Error),
 }
 

@@ -11,6 +11,7 @@ use hashbrown::{HashMap, HashSet};
 use influxdb3_catalog::catalog::TableDefinition;
 use influxdb3_id::ColumnId;
 use influxdb3_wal::{FieldData, Row};
+use miette::Diagnostic;
 use observability_deps::tracing::error;
 use schema::sort::SortKey;
 use schema::{InfluxColumnType, InfluxFieldType, Schema, SchemaBuilder};
@@ -22,12 +23,16 @@ use thiserror::Error;
 
 use crate::ChunkFilter;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Diagnostic, Error)]
+#[diagnostic(
+    code(influxdb3_write::write_buffer::table_buffer),
+    url("https://github.com/influxdata/influxdb/issues/new?template=bug_report.md")
+)]
 pub enum Error {
     #[error("Field not found in table buffer: {0}")]
     FieldNotFound(String),
 
-    #[error("Error creating record batch: {0}")]
+    #[error("Error creating record batch")]
     RecordBatchError(#[from] arrow::error::ArrowError),
 }
 
