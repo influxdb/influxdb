@@ -921,7 +921,7 @@ mod test_helpers {
             let val =
                 WriteValidator::initialize(db, Arc::clone(&self.catalog), default_time).unwrap();
             let lines = val
-                .v1_parse_lines_and_update_schema(
+                .parse_lines_and_update_schema(
                     lp,
                     false,
                     self.time_provider.now(),

@@ -73,18 +73,18 @@ impl WriteValidator<WithCatalog> {
         })
     }
 
-    /// Parse the incoming lines of line protocol using the v1 parser and update
-    /// the [`DatabaseSchema`] if:
+    /// Parse the incoming lines of line protocol and update the
+    /// [`DatabaseSchema`] if:
     ///
     /// * A new table is being added
-    /// * New fields, or tags are being added to an existing table
+    /// * New fields or tags are being added to an existing table
     ///
     /// # Implementation Note
     ///
     /// If this function succeeds, then the catalog will receive an update, so
     /// steps following this should be infallible.
-    pub fn v1_parse_lines_and_update_schema(
-        self,
+    pub fn parse_lines_and_update_schema(
+        mut self,
         lp: &str,
         accept_partial: bool,
         ingest_time: Time,
@@ -108,7 +108,7 @@ impl WriteValidator<WithCatalog> {
                 })
                 .and_then(|l| {
                     let raw_line = lp_lines.next().unwrap();
-                    validate_and_qualify_v1_line(&mut schema, line_idx, l, ingest_time, precision)
+                    validate_and_qualify_line(&mut schema, line_idx, l, ingest_time, precision)
                         .inspect(|_| bytes += raw_line.len() as u64)
                 }) {
                 Ok((qualified_line, catalog_op)) => (qualified_line, catalog_op),
@@ -141,8 +141,33 @@ impl WriteValidator<WithCatalog> {
                 database_name: Arc::clone(&self.state.db_schema.name),
                 ops: catalog_updates,
             };
-            self.state.catalog.apply_catalog_batch(&catalog_batch)?
+            let catalog_batch = self.state.catalog.apply_catalog_batch(&catalog_batch)?;
+            // Update the schema used since we have applied new batches
+            self.state.db_schema = self
+                .state
+                .catalog
+                .db_schema_by_id(&self.state.db_schema.id)
+                .expect("schema should exist");
+            catalog_batch
         };
+
+        let schema = self.state.db_schema.as_ref();
+
+        // We now need to make sure lines are filled in with non null values for tags
+        for line in lines.iter_mut() {
+            // The table should exist if applied to the schema
+            let table_schema = schema
+                .table_definition_by_id(&line.table_id)
+                .expect("table should exist in schema by this point");
+            for tag_id in table_schema.series_key.iter() {
+                if !line.row.fields.iter().any(|field| field.id == *tag_id) {
+                    line.row.fields.push(Field {
+                        id: *tag_id,
+                        value: FieldData::Tag(String::new()),
+                    });
+                }
+            }
+        }
 
         Ok(WriteValidator {
             state: LinesParsed {
@@ -163,10 +188,7 @@ type ColumnTracker = Vec<(ColumnId, Arc<str>, InfluxColumnType)>;
 ///
 /// This is for scenarios where a write comes in for a table that exists, but may have
 /// invalid field types, based on the pre-existing schema.
-///
-/// An error will also be produced if the write, which is for the v1 data model, is targetting
-/// a v3 table.
-fn validate_and_qualify_v1_line(
+fn validate_and_qualify_line(
     db_schema: &mut Cow<'_, DatabaseSchema>,
     line_number: usize,
     line: ParsedLine<'_>,
@@ -186,13 +208,9 @@ fn validate_and_qualify_v1_line(
                 if let Some(col_id) = table_def.column_name_to_id(tag_key.as_str()) {
                     fields.push(Field::new(col_id, FieldData::Tag(tag_val.to_string())));
                 } else {
-                    return Err(WriteLineError {
-                        original_line: line.to_string(),
-                        line_number: line_number + 1,
-                        error_message: format!(
-                            "Detected a new tag '{tag_key}' in write. The tag set is immutable on first write to the table."
-                        ),
-                    });
+                    let col_id = ColumnId::new();
+                    fields.push(Field::new(col_id, FieldData::Tag(tag_val.to_string())));
+                    columns.push((col_id, tag_key.as_str().into(), InfluxColumnType::Tag));
                 }
                 index_count += 1;
             }
@@ -423,7 +441,7 @@ impl WriteValidator<LinesParsed> {
         self.state
     }
 
-    /// Convert a set of valid parsed `v3` lines to a [`ValidatedLines`] which will
+    /// Convert a set of valid parsed lines to a [`ValidatedLines`] which will
     /// be buffered and written to the WAL, if configured.
     ///
     /// This involves splitting out the writes into different batches for each chunk, which will
@@ -503,7 +521,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::WriteValidator;
-    use crate::{write_buffer::Error, Precision, WriteLineError};
+    use crate::{write_buffer::Error, Precision};
 
     use data_types::NamespaceName;
     use influxdb3_catalog::catalog::Catalog;
@@ -519,7 +537,7 @@ mod tests {
         let catalog = Arc::new(Catalog::new(node_id, instance_id));
         let result = WriteValidator::initialize(namespace.clone(), Arc::clone(&catalog), 0)
             .unwrap()
-            .v1_parse_lines_and_update_schema(
+            .parse_lines_and_update_schema(
                 "cpu,tag1=foo val1=\"bar\" 1234",
                 false,
                 Time::from_timestamp_nanos(0),
@@ -546,7 +564,7 @@ mod tests {
         // has the table/columns added, so it will excercise a different code path:
         let result = WriteValidator::initialize(namespace.clone(), Arc::clone(&catalog), 0)
             .unwrap()
-            .v1_parse_lines_and_update_schema(
+            .parse_lines_and_update_schema(
                 "cpu,tag1=foo val1=\"bar\" 1235",
                 false,
                 Time::from_timestamp_nanos(0),
@@ -564,7 +582,7 @@ mod tests {
         // Validate another write, this time adding a new field:
         let result = WriteValidator::initialize(namespace.clone(), Arc::clone(&catalog), 0)
             .unwrap()
-            .v1_parse_lines_and_update_schema(
+            .parse_lines_and_update_schema(
                 "cpu,tag1=foo val1=\"bar\",val2=false 1236",
                 false,
                 Time::from_timestamp_nanos(0),
@@ -579,21 +597,42 @@ mod tests {
         assert_eq!(result.index_count, 1);
         assert!(result.errors.is_empty());
 
-        // Validate another write, this time failing when adding a new tag:
-        match WriteValidator::initialize(namespace.clone(), catalog, 0)
+        Ok(())
+    }
+
+    #[test]
+    fn tags_are_filled_in() -> Result<(), Error> {
+        let node_id = Arc::from("sample-host-id");
+        let instance_id = Arc::from("sample-instance-id");
+        let namespace = NamespaceName::new("test").unwrap();
+        let catalog = Arc::new(Catalog::new(node_id, instance_id));
+        let result = WriteValidator::initialize(namespace.clone(), Arc::clone(&catalog), 0)
             .unwrap()
-            .v1_parse_lines_and_update_schema(
-                "cpu,tag1=foo,tag2=baz val1=\"bar\",val2=false 1236",
+            .parse_lines_and_update_schema(
+                "cpu,tag1=foo val=0\n\
+                cpu,tag2=bar val=1\n\
+                cpu,tag1=baz,tag2=baq val=1\n",
                 false,
                 Time::from_timestamp_nanos(0),
                 Precision::Auto,
-            ) {
-            Err(Error::ParseError(WriteLineError { error_message, .. })) => {
-                assert_eq!("Detected a new tag 'tag2' in write. The tag set is immutable on first write to the table.", error_message);
+            )
+            .unwrap();
+        // Check that the tag exists for every line
+        for line in result.state.lines {
+            let Some(table_schema) = result
+                .state
+                .catalog
+                .db_schema
+                .table_definition_by_id(&line.table_id)
+            else {
+                panic!("Table not found: {}", line.table_id);
+            };
+            for tag_id in table_schema.series_key.iter() {
+                if !line.row.fields.iter().any(|field| field.id == *tag_id) {
+                    panic!("Tag not found: {tag_id}");
+                }
             }
-            Ok(_) | Err(_) => panic!("Validator should have failed on new tag"),
         }
-
         Ok(())
     }
 }

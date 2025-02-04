@@ -806,12 +806,7 @@ mod tests {
         );
 
         let lines = val
-            .v1_parse_lines_and_update_schema(
-                &lp,
-                false,
-                time_provider.now(),
-                Precision::Nanosecond,
-            )
+            .parse_lines_and_update_schema(&lp, false, time_provider.now(), Precision::Nanosecond)
             .unwrap()
             .convert_lines_to_buffer(Gen1Duration::new_1m());
         let batch: WriteBatch = lines.into();
@@ -844,7 +839,7 @@ mod tests {
         let val = WriteValidator::initialize(db, Arc::clone(&catalog), 0).unwrap();
 
         let lines = val
-            .v1_parse_lines_and_update_schema(lp, false, time_provider.now(), Precision::Nanosecond)
+            .parse_lines_and_update_schema(lp, false, time_provider.now(), Precision::Nanosecond)
             .unwrap()
             .convert_lines_to_buffer(Gen1Duration::new_1m());
         let batch: WriteBatch = lines.into();

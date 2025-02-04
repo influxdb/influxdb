@@ -617,7 +617,7 @@ mod tests {
             let validator =
                 WriteValidator::initialize(db, Arc::clone(&self.catalog), ingest_time_ns).unwrap();
             validator
-                .v1_parse_lines_and_update_schema(
+                .parse_lines_and_update_schema(
                     lp.as_ref(),
                     false,
                     Time::from_timestamp_nanos(ingest_time_ns),

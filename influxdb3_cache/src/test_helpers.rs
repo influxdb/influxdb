@@ -27,7 +27,7 @@ impl TestWriter {
             time_ns,
         )
         .expect("initialize write validator")
-        .v1_parse_lines_and_update_schema(
+        .parse_lines_and_update_schema(
             lp.as_ref(),
             false,
             Time::from_timestamp_nanos(time_ns),
@@ -45,7 +45,7 @@ impl TestWriter {
             time_ns,
         )
         .expect("initialize write validator")
-        .v1_parse_lines_and_update_schema(
+        .parse_lines_and_update_schema(
             lp.as_ref(),
             false,
             Time::from_timestamp_nanos(time_ns),

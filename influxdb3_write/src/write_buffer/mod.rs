@@ -288,7 +288,7 @@ impl WriteBufferImpl {
             self.catalog(),
             ingest_time.timestamp_nanos(),
         )?
-        .v1_parse_lines_and_update_schema(lp, accept_partial, ingest_time, precision)?
+        .parse_lines_and_update_schema(lp, accept_partial, ingest_time, precision)?
         .convert_lines_to_buffer(self.wal_config.gen1_duration);
 
         // if there were catalog updates, ensure they get persisted to the wal, so they're
@@ -992,7 +992,7 @@ mod tests {
         let lp = "cpu,region=west user=23.2 100\nfoo f1=1i";
         WriteValidator::initialize(db_name, Arc::clone(&catalog), 0)
             .unwrap()
-            .v1_parse_lines_and_update_schema(
+            .parse_lines_and_update_schema(
                 lp,
                 false,
                 Time::from_timestamp_nanos(0),
@@ -2552,13 +2552,13 @@ mod tests {
         // now do a write that will only be partially accepted to ensure that
         // the metrics are only calculated for writes that get accepted:
 
-        // the legume will not be accepted, because it contains a new tag,
+        // the legume will not be accepted, because it is an invalid line and,
         // so should not be included in metric calculations:
         let lp = "\
             produce,type=fruit,name=banana price=1.50\n\
             produce,type=fruit,name=papaya price=5.50\n\
             produce,type=vegetable,name=lettuce price=1.00\n\
-            produce,type=fruit,name=lentils,family=legume price=2.00\n\
+            produce,type=fruit,name=lentils,family=legume price=\n\
             ";
         do_writes_partial(
             db_2,

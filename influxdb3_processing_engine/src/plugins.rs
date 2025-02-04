@@ -640,7 +640,7 @@ pub(crate) fn run_test_wal_plugin(
         Arc::clone(&catalog),
         now_time.timestamp_nanos(),
     )?;
-    let data = validator.v1_parse_lines_and_update_schema(
+    let data = validator.parse_lines_and_update_schema(
         &request.input_lp,
         false,
         now_time,
@@ -711,7 +711,7 @@ impl TestWriteHandler {
         };
 
         let lp = lines.join("\n");
-        match validator.v1_parse_lines_and_update_schema(
+        match validator.parse_lines_and_update_schema(
             &lp,
             false,
             self.now_time,
@@ -917,7 +917,7 @@ def process_writes(influxdb3_local, table_batches, args=None):
         )
         .unwrap();
         let _data = validator
-            .v1_parse_lines_and_update_schema(
+            .parse_lines_and_update_schema(
                 "cpu,host=A f1=10i 100",
                 false,
                 now,

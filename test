@@ -1,0 +1,3 @@
+whee,tag1=foo field1=1
+whee,tag2=foo field1=1
+whee,tag1=bar,tag2=foo field1=1

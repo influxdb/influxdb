@@ -74,16 +74,6 @@ pub enum Error {
         attempted: InfluxColumnType,
     },
 
-    #[error(
-        "Series key mismatch on table {}. Existing table has {}",
-        table_name,
-        existing
-    )]
-    SeriesKeyMismatch {
-        table_name: String,
-        existing: String,
-    },
-
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 
@@ -1007,13 +997,6 @@ impl TableDefinition {
         &self,
         table_definition: &influxdb3_wal::WalTableDefinition,
     ) -> Result<Cow<'_, Self>> {
-        // validate the series key is the same
-        if table_definition.key != self.series_key {
-            return Err(Error::SeriesKeyMismatch {
-                table_name: self.table_name.to_string(),
-                existing: self.schema.series_key().unwrap_or_default().join("/"),
-            });
-        }
         Self::add_fields(Cow::Borrowed(self), &table_definition.field_definitions)
     }
 
@@ -1063,6 +1046,8 @@ impl TableDefinition {
         // Use BTree to insert existing and new columns, and use that to generate the
         // resulting schema, to ensure column order is consistent:
         let mut cols = BTreeMap::new();
+        let mut series_key_additions = Vec::new();
+
         for (_, col_def) in self.columns.drain(..) {
             cols.insert(Arc::clone(&col_def.name), col_def);
         }
@@ -1076,6 +1061,10 @@ impl TableDefinition {
                 .is_none(),
                 "attempted to add existing column"
             );
+            // Add the tag to the series key
+            if column_type == InfluxColumnType::Tag {
+                series_key_additions.push(id);
+            }
         }
 
         // ensure we don't go over the column limit
@@ -1100,6 +1089,8 @@ impl TableDefinition {
             })
             .map(|(_, def)| (def.id, def))
             .collect();
+
+        self.series_key.extend_from_slice(&series_key_additions);
 
         Ok(())
     }
