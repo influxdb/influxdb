@@ -4,6 +4,7 @@ import (
 	"context"
 	goerrors "errors"
 	"fmt"
+	"slices"
 
 	"github.com/go-crypt/crypt"
 	"github.com/influxdata/influxdb/v2"
@@ -241,7 +242,7 @@ func (s *Store) autogenerateHasher(ctx context.Context, variantName string) (*Au
 	hasherVariant := influxdb2_algo.NewVariant(variantName)
 	decoderVariants = append(decoderVariants, hasherVariant)
 	delete(foundVariants, hasherVariant)
-	for variant, _ := range foundVariants {
+	for variant := range foundVariants {
 		decoderVariants = append(decoderVariants, variant)
 	}
 
@@ -274,26 +275,13 @@ func (s *Store) hashedTokenMigration(ctx context.Context) error {
 		return err
 	}
 
-	/*
-		for batch := range slices.Chunk(authsNeedingUpdate, 100) {
-			err := s.Update(ctx, func(tx kv.Tx) error {
-				// Now update them. This really seems too simple, but s.UpdateJAuthorization() is magical.
-				for _, a := range batch {
-					if _, err := s.UpdateAuthorization(ctx, tx, a.ID, a); err != nil {
-						return err
-					}
+	for batch := range slices.Chunk(authsNeedingUpdate, 100) {
+		err := s.Update(ctx, func(tx kv.Tx) error {
+			// Now update them. This really seems too simple, but s.UpdateJAuthorization() is magical.
+			for _, a := range batch {
+				if _, err := s.UpdateAuthorization(ctx, tx, a.ID, a); err != nil {
+					return err
 				}
-				return nil
-			})
-			if err != nil {
-				return fmt.Errorf("error migrating hashed tokens: %w", err)
-			}
-		}
-	*/
-	for _, a := range authsNeedingUpdate {
-		err = s.Update(ctx, func(tx kv.Tx) error {
-			if _, err := s.UpdateAuthorization(ctx, tx, a.ID, a); err != nil {
-				return err
 			}
 			return nil
 		})

@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/influxdata/httprouter"
-	"github.com/influxdata/influxdb/v2"
 	platform "github.com/influxdata/influxdb/v2"
 	"github.com/influxdata/influxdb/v2/authorization"
 	pcontext "github.com/influxdata/influxdb/v2/context"
@@ -956,7 +955,7 @@ func initAuthorizationService(f platformtesting.AuthorizationFields, useTokenHas
 
 func runAuthorizationServiceTest(
 	name string,
-	tf func(init func(platformtesting.AuthorizationFields, *testing.T) (influxdb.AuthorizationService, string, func()), t *testing.T),
+	tf func(init func(platformtesting.AuthorizationFields, *testing.T) (platform.AuthorizationService, string, func()), t *testing.T),
 	initWithHashing func(f platformtesting.AuthorizationFields, useTokenHashing bool, t *testing.T) (platform.AuthorizationService, string, func()),
 	t *testing.T,
 ) {
