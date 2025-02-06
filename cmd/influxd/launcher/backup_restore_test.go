@@ -2,6 +2,7 @@ package launcher_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/influxdata/influx-cli/v2/clients/backup"
@@ -13,7 +14,26 @@ import (
 	"go.uber.org/zap"
 )
 
+func runBackupRestoreTests(t *testing.T, name string, testFunc func(bool, bool, *testing.T)) {
+	t.Helper()
+	for _, backupHashedTokens := range []bool{false, true} {
+		for _, restoreHashedTokens := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/BackupHashedTokens=%t/RestoreHashedTokens=%t", name, backupHashedTokens, restoreHashedTokens),
+				func() func(*testing.T) {
+					return func(t *testing.T) {
+						testFunc(backupHashedTokens, restoreHashedTokens, t)
+					}
+				}())
+		}
+	}
+}
+
 func TestBackupRestore_Full(t *testing.T) {
+	t.Helper()
+	runBackupRestoreTests(t, "TestBackupRestore_Full", runTestBackupRestore_Full)
+}
+
+func runTestBackupRestore_Full(backupHashedTokens, restoreHashedTokens bool, t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
@@ -24,6 +44,7 @@ func TestBackupRestore_Full(t *testing.T) {
 		o.StoreType = "bolt"
 		o.Testing = false
 		o.LogLevel = zap.InfoLevel
+		o.UseHashedTokens = backupHashedTokens
 	})
 	originalAuth := *l1.Auth
 	l1.WritePointsOrFail(t, "m,k=v1 f=100i 946684800000000000\nm,k=v2 f=200i 946684800000000001")
@@ -49,6 +70,7 @@ func TestBackupRestore_Full(t *testing.T) {
 		o.StoreType = "bolt"
 		o.Testing = false
 		o.LogLevel = zap.InfoLevel
+		o.UseHashedTokens = restoreHashedTokens
 	})
 	defer l2.ShutdownOrFail(t, ctx)
 
@@ -73,7 +95,11 @@ func TestBackupRestore_Full(t *testing.T) {
 	}, "m,k=v5 f=100i 946684800000000005\nm,k=v7 f=200i 946684800000000006")
 
 	// Perform a full restore from the previous backups.
-	l2.RestoreOrFail(t, ctx, restore.Params{Path: backupDir, Full: true})
+	restoreParams := restore.Params{Path: backupDir, Full: true}
+	if backupHashedTokens {
+		restoreParams.OperatorToken = originalAuth.Token
+	}
+	l2.RestoreOrFail(t, ctx, restoreParams)
 
 	// A full restore also restores the original token
 	l2.Auth = &originalAuth
@@ -110,6 +136,11 @@ func TestBackupRestore_Full(t *testing.T) {
 }
 
 func TestBackupRestore_Partial(t *testing.T) {
+	t.Helper()
+	runBackupRestoreTests(t, "TestBackupRestore_Full", runTestBackupRestore_Partial)
+}
+
+func runTestBackupRestore_Partial(backupHashedTokens, restoreHashedTokens bool, t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
@@ -120,6 +151,7 @@ func TestBackupRestore_Partial(t *testing.T) {
 		o.StoreType = "bolt"
 		o.Testing = false
 		o.LogLevel = zap.InfoLevel
+		o.UseHashedTokens = backupHashedTokens
 	})
 	l1.WritePointsOrFail(t, "m,k=v1 f=100i 946684800000000000\nm,k=v2 f=200i 946684800000000001")
 	l1.BackupOrFail(t, ctx, backup.Params{Path: backupDir})
@@ -144,6 +176,7 @@ func TestBackupRestore_Partial(t *testing.T) {
 		o.StoreType = "bolt"
 		o.Testing = false
 		o.LogLevel = zap.InfoLevel
+		o.UseHashedTokens = restoreHashedTokens
 	})
 	defer l2.ShutdownOrFail(t, ctx)
 

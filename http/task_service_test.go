@@ -26,6 +26,7 @@ import (
 	"github.com/influxdata/influxdb/v2/task/taskmodel"
 	"github.com/influxdata/influxdb/v2/tenant"
 	influxdbtesting "github.com/influxdata/influxdb/v2/testing"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 )
@@ -1216,15 +1217,30 @@ func TestService_handlePostTaskLabel(t *testing.T) {
 	}
 }
 
+func runTestWithTokenHashingOptions(name string, testFunc func(bool, *testing.T), t *testing.T) {
+	t.Helper()
+	for _, useTokenHashing := range []bool{false, true} {
+		t.Run(fmt.Sprintf("%s/TokenHashing=%t", name, useTokenHashing), func(t *testing.T) {
+			testFunc(useTokenHashing, t)
+		})
+	}
+}
+
 // Test that org name to org ID translation happens properly in the HTTP layer.
 // Regression test for https://github.com/influxdata/influxdb/issues/12089.
 func TestTaskHandler_CreateTaskWithOrgName(t *testing.T) {
+	runTestWithTokenHashingOptions("TestTaskHandler_CreateTaskWithOrgName", runTestTaskHandler_CreateTaskWithOrgName, t)
+}
+
+func runTestTaskHandler_CreateTaskWithOrgName(useTokenHashing bool, t *testing.T) {
+	ctx := context.Background()
+
 	i := influxdbtesting.NewTestInmemStore(t)
 
 	ts := tenant.NewService(tenant.NewStore(i))
-	aStore, _ := authorization.NewStore(i)
+	aStore, err := authorization.NewStore(ctx, i, useTokenHashing)
+	require.NoError(t, err)
 	as := authorization.NewService(aStore, ts)
-	ctx := context.Background()
 
 	// Set up user and org.
 	u := &influxdb.User{Name: "u"}
@@ -1315,7 +1331,14 @@ func TestTaskHandler_CreateTaskWithOrgName(t *testing.T) {
 }
 
 func TestTaskHandler_Sessions(t *testing.T) {
+	runTestWithTokenHashingOptions("TestTaskHandler_Sessions", runTestTaskHandler_Sessions, t)
+}
+
+func runTestTaskHandler_Sessions(useTokenHashing bool, t *testing.T) {
 	t.Skip("rework these")
+
+	ctx := context.Background()
+
 	// Common setup to get a working base for using tasks.
 	st := influxdbtesting.NewTestInmemStore(t)
 
@@ -1328,13 +1351,11 @@ func TestTaskHandler_Sessions(t *testing.T) {
 	}
 	labelService := label.NewService(labelStore)
 
-	authStore, err := authorization.NewStore(st)
+	authStore, err := authorization.NewStore(ctx, st, useTokenHashing)
 	if err != nil {
 		t.Fatal(err)
 	}
 	authService := authorization.NewService(authStore, tSvc)
-
-	ctx := context.Background()
 
 	// Set up user and org.
 	u := &influxdb.User{Name: "u"}

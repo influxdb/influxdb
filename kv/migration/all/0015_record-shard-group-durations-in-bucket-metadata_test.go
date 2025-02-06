@@ -3,6 +3,7 @@ package all
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -18,11 +19,21 @@ func TestMigration_ShardGroupDuration(t *testing.T) {
 }
 
 func testRepairMissingShardGroupDurations(t *testing.T, migrationNum int) {
+	t.Helper()
+	for _, useTokenHashing := range []bool{false, true} {
+		name := fmt.Sprintf("RepairMissingSHardGroupDurations/migrationNum=%d/useTokenHashing=%t", migrationNum, useTokenHashing)
+		t.Run(name, func(t *testing.T) {
+			testRepairMissingShardGroupDurationsWithTokenHashing(t, migrationNum, useTokenHashing)
+		})
+	}
+}
+
+func testRepairMissingShardGroupDurationsWithTokenHashing(t *testing.T, migrationNum int, useTokenHashing bool) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
 	// Run up to the migration before the migration-under-test.
-	ts := newService(t, ctx, migrationNum-2)
+	ts := newService(t, ctx, migrationNum-2, useTokenHashing)
 
 	// Seed some buckets.
 	buckets := []*influxdb.Bucket{

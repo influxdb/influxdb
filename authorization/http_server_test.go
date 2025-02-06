@@ -144,65 +144,64 @@ func TestService_handlePostAuthorization(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Helper()
+		for _, useHashedTokens := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/TokenHashing=%t", tt.name, useHashedTokens), func(t *testing.T) {
+				s := itesting.NewTestInmemStore(t)
 
-			s := itesting.NewTestInmemStore(t)
-			storage, err := NewStore(s)
-			if err != nil {
-				t.Fatal(err)
-			}
+				storage, err := NewStore(context.Background(), s, useHashedTokens)
+				require.NoError(t, err)
 
-			svc := NewService(storage, tt.fields.TenantService)
+				svc := NewService(storage, tt.fields.TenantService)
 
-			handler := NewHTTPAuthHandler(zaptest.NewLogger(t), svc, tt.fields.TenantService)
-			router := chi.NewRouter()
-			router.Mount(handler.Prefix(), handler)
+				handler := NewHTTPAuthHandler(zaptest.NewLogger(t), svc, tt.fields.TenantService)
+				router := chi.NewRouter()
+				router.Mount(handler.Prefix(), handler)
 
-			req, err := newPostAuthorizationRequest(tt.args.authorization)
-			if err != nil {
-				t.Fatalf("failed to create new authorization request: %v", err)
-			}
-			b, err := json.Marshal(req)
-			if err != nil {
-				t.Fatalf("failed to unmarshal authorization: %v", err)
-			}
+				req, err := newPostAuthorizationRequest(tt.args.authorization)
+				if err != nil {
+					t.Fatalf("failed to create new authorization request: %v", err)
+				}
+				b, err := json.Marshal(req)
+				if err != nil {
+					t.Fatalf("failed to unmarshal authorization: %v", err)
+				}
 
-			r := httptest.NewRequest("GET", "http://any.url", bytes.NewReader(b))
-			r = r.WithContext(context.WithValue(
-				context.Background(),
-				httprouter.ParamsKey,
-				httprouter.Params{
-					{
-						Key:   "userID",
-						Value: fmt.Sprintf("%d", tt.args.session.UserID),
-					},
-				}))
+				r := httptest.NewRequest("GET", "http://any.url", bytes.NewReader(b))
+				r = r.WithContext(context.WithValue(
+					context.Background(),
+					httprouter.ParamsKey,
+					httprouter.Params{
+						{
+							Key:   "userID",
+							Value: fmt.Sprintf("%d", tt.args.session.UserID),
+						},
+					}))
 
-			w := httptest.NewRecorder()
+				w := httptest.NewRecorder()
 
-			ctx := icontext.SetAuthorizer(context.Background(), tt.args.session)
-			r = r.WithContext(ctx)
+				ctx := icontext.SetAuthorizer(context.Background(), tt.args.session)
+				r = r.WithContext(ctx)
 
-			handler.handlePostAuthorization(w, r)
+				handler.handlePostAuthorization(w, r)
 
-			res := w.Result()
-			content := res.Header.Get("Content-Type")
-			body, _ := io.ReadAll(res.Body)
+				res := w.Result()
+				content := res.Header.Get("Content-Type")
+				body, _ := io.ReadAll(res.Body)
 
-			if res.StatusCode != tt.wants.statusCode {
-				t.Logf("headers: %v body: %s", res.Header, body)
-				t.Errorf("%q. handlePostAuthorization() = %v, want %v", tt.name, res.StatusCode, tt.wants.statusCode)
-			}
-			if tt.wants.contentType != "" && content != tt.wants.contentType {
-				t.Errorf("%q. handlePostAuthorization() = %v, want %v", tt.name, content, tt.wants.contentType)
-			}
-			if diff, err := jsonDiff(string(body), tt.wants.body); diff != "" {
-				t.Errorf("%q. handlePostAuthorization() = ***%s***", tt.name, diff)
-			} else if err != nil {
-				t.Errorf("%q, handlePostAuthorization() error: %v", tt.name, err)
-			}
-		})
+				if res.StatusCode != tt.wants.statusCode {
+					t.Logf("headers: %v body: %s", res.Header, body)
+					t.Errorf("%q. handlePostAuthorization() = %v, want %v", tt.name, res.StatusCode, tt.wants.statusCode)
+				}
+				if tt.wants.contentType != "" && content != tt.wants.contentType {
+					t.Errorf("%q. handlePostAuthorization() = %v, want %v", tt.name, content, tt.wants.contentType)
+				}
+				if diff, err := jsonDiff(string(body), tt.wants.body); diff != "" {
+					t.Errorf("%q. handlePostAuthorization() = ***%s***", tt.name, diff)
+				} else if err != nil {
+					t.Errorf("%q, handlePostAuthorization() error: %v", tt.name, err)
+				}
+			})
+		}
 	}
 }
 
@@ -340,8 +339,6 @@ func TestService_handleGetAuthorization(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Helper()
-
 			handler := NewHTTPAuthHandler(zaptest.NewLogger(t), tt.fields.AuthorizationService, tt.fields.TenantService)
 			router := chi.NewRouter()
 			router.Mount(handler.Prefix(), handler)
@@ -715,52 +712,55 @@ func TestService_handleGetAuthorizations(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Helper()
+		for _, useHashedTokens := range []bool{false, true} {
+			t.Run(tt.name, func(t *testing.T) {
+				t.Helper()
 
-			s := itesting.NewTestInmemStore(t)
-			storage, err := NewStore(s)
-			if err != nil {
-				t.Fatal(err)
-			}
+				s := itesting.NewTestInmemStore(t)
 
-			svc := NewService(storage, tt.fields.TenantService)
-
-			handler := NewHTTPAuthHandler(zaptest.NewLogger(t), svc, tt.fields.TenantService)
-			router := chi.NewRouter()
-			router.Mount(handler.Prefix(), handler)
-
-			r := httptest.NewRequest("GET", "http://any.url", nil)
-
-			qp := r.URL.Query()
-			for k, vs := range tt.args.queryParams {
-				for _, v := range vs {
-					qp.Add(k, v)
+				storage, err := NewStore(context.Background(), s, useHashedTokens)
+				if err != nil {
+					t.Fatal(err)
 				}
-			}
-			r.URL.RawQuery = qp.Encode()
 
-			w := httptest.NewRecorder()
+				svc := NewService(storage, tt.fields.TenantService)
 
-			handler.handleGetAuthorizations(w, r)
+				handler := NewHTTPAuthHandler(zaptest.NewLogger(t), svc, tt.fields.TenantService)
+				router := chi.NewRouter()
+				router.Mount(handler.Prefix(), handler)
 
-			res := w.Result()
-			content := res.Header.Get("Content-Type")
-			body, _ := io.ReadAll(res.Body)
+				r := httptest.NewRequest("GET", "http://any.url", nil)
 
-			if res.StatusCode != tt.wants.statusCode {
-				t.Errorf("%q. handleGetAuthorizations() = %v, want %v", tt.name, res.StatusCode, tt.wants.statusCode)
-			}
-			if tt.wants.contentType != "" && content != tt.wants.contentType {
-				t.Errorf("%q. handleGetAuthorizations() = %v, want %v", tt.name, content, tt.wants.contentType)
-			}
-			if diff, err := jsonDiff(string(body), tt.wants.body); diff != "" {
-				t.Errorf("%q. handleGetAuthorizations() = ***%s***", tt.name, diff)
-			} else if err != nil {
-				t.Errorf("%q, handleGetAuthorizations() error: %v", tt.name, err)
-			}
+				qp := r.URL.Query()
+				for k, vs := range tt.args.queryParams {
+					for _, v := range vs {
+						qp.Add(k, v)
+					}
+				}
+				r.URL.RawQuery = qp.Encode()
 
-		})
+				w := httptest.NewRecorder()
+
+				handler.handleGetAuthorizations(w, r)
+
+				res := w.Result()
+				content := res.Header.Get("Content-Type")
+				body, _ := io.ReadAll(res.Body)
+
+				if res.StatusCode != tt.wants.statusCode {
+					t.Errorf("%q. handleGetAuthorizations() = %v, want %v", tt.name, res.StatusCode, tt.wants.statusCode)
+				}
+				if tt.wants.contentType != "" && content != tt.wants.contentType {
+					t.Errorf("%q. handleGetAuthorizations() = %v, want %v", tt.name, content, tt.wants.contentType)
+				}
+				if diff, err := jsonDiff(string(body), tt.wants.body); diff != "" {
+					t.Errorf("%q. handleGetAuthorizations() = ***%s***", tt.name, diff)
+				} else if err != nil {
+					t.Errorf("%q, handleGetAuthorizations() error: %v", tt.name, err)
+				}
+
+			})
+		}
 	}
 }
 
@@ -895,7 +895,7 @@ func jsonDiff(s1, s2 string) (diff string, err error) {
 
 var authorizationCmpOptions = cmp.Options{
 	cmpopts.EquateEmpty(),
-	cmpopts.IgnoreFields(influxdb.Authorization{}, "ID", "Token", "CreatedAt", "UpdatedAt"),
+	cmpopts.IgnoreFields(influxdb.Authorization{}, "ID", "Token", "HashedToken", "CreatedAt", "UpdatedAt"),
 	cmp.Comparer(func(x, y []byte) bool {
 		return bytes.Equal(x, y)
 	}),

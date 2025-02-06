@@ -47,6 +47,7 @@ func (q *Log) Redact() {
 		*auth = *q.ProxyRequest.Request.Authorization
 		// Redact authorization token
 		auth.Token = ""
+		auth.HashedToken = ""
 
 		// Apply redacted authorization
 		request.Request.Authorization = auth

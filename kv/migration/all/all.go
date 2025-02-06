@@ -47,5 +47,7 @@ var Migrations = [...]migration.Spec{
 	Migration0019_AddRemotesReplicationsToTokens,
 	// add_remotes_replications_metrics_buckets
 	Migration0020_Add_remotes_replications_metrics_buckets,
+	// create bucket for hashed token index
+	Migration0021_CreateAuthorizationHashedIndexv1,
 	// {{ do_not_edit . }}
 }

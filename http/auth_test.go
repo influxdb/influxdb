@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/influxdata/httprouter"
+	"github.com/influxdata/influxdb/v2"
 	platform "github.com/influxdata/influxdb/v2"
 	"github.com/influxdata/influxdb/v2/authorization"
 	pcontext "github.com/influxdata/influxdb/v2/context"
@@ -858,7 +859,7 @@ func TestService_handleDeleteAuthorization(t *testing.T) {
 	}
 }
 
-func initAuthorizationService(f platformtesting.AuthorizationFields, t *testing.T) (platform.AuthorizationService, string, func()) {
+func initAuthorizationService(f platformtesting.AuthorizationFields, useTokenHashing bool, t *testing.T) (platform.AuthorizationService, string, func()) {
 	t.Helper()
 	if t.Name() == "TestAuthorizationService_FindAuthorizations/find_authorization_by_token" {
 		/*
@@ -872,12 +873,14 @@ func initAuthorizationService(f platformtesting.AuthorizationFields, t *testing.
 		t.Skip("HTTP authorization service does not required a user id on the authentication struct.  We get the user from the session token.")
 	}
 
+	ctx := context.Background()
+
 	store := platformtesting.NewTestInmemStore(t)
 	tenantStore := tenant.NewStore(store)
 	tenantStore.OrgIDGen = f.OrgIDGenerator
 	tenantService := tenant.NewService(tenantStore)
 
-	authStore, err := authorization.NewStore(store)
+	authStore, err := authorization.NewStore(ctx, store, useTokenHashing)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -887,8 +890,6 @@ func initAuthorizationService(f platformtesting.AuthorizationFields, t *testing.
 	svc.IDGenerator = f.IDGenerator
 	svc.TokenGenerator = f.TokenGenerator
 	svc.TimeGenerator = f.TimeGenerator
-
-	ctx := context.Background()
 
 	for _, u := range f.Users {
 		if err := tenantService.CreateUser(ctx, u); err != nil {
@@ -953,12 +954,29 @@ func initAuthorizationService(f platformtesting.AuthorizationFields, t *testing.
 	return &AuthorizationService{Client: httpClient}, "", done
 }
 
+func runAuthorizationServiceTest(
+	name string,
+	tf func(init func(platformtesting.AuthorizationFields, *testing.T) (influxdb.AuthorizationService, string, func()), t *testing.T),
+	initWithHashing func(f platformtesting.AuthorizationFields, useTokenHashing bool, t *testing.T) (platform.AuthorizationService, string, func()),
+	t *testing.T,
+) {
+	t.Helper()
+	for _, useHashedTokens := range []bool{false, true} {
+		init := func(f platformtesting.AuthorizationFields, t *testing.T) (platform.AuthorizationService, string, func()) {
+			return initWithHashing(f, useHashedTokens, t)
+		}
+		t.Run(fmt.Sprintf("%s/TokenHashing=%t", name, useHashedTokens), func(t *testing.T) {
+			tf(init, t)
+		})
+	}
+}
+
 func TestAuthorizationService_CreateAuthorization(t *testing.T) {
-	platformtesting.CreateAuthorization(initAuthorizationService, t)
+	runAuthorizationServiceTest("TestAuthorizationService_CreateAuthorization", platformtesting.CreateAuthorization, initAuthorizationService, t)
 }
 
 func TestAuthorizationService_FindAuthorizationByID(t *testing.T) {
-	platformtesting.FindAuthorizationByID(initAuthorizationService, t)
+	runAuthorizationServiceTest("TestAuthorizationService_FindAuthorizationByID", platformtesting.FindAuthorizationByID, initAuthorizationService, t)
 }
 
 func TestAuthorizationService_FindAuthorizationByToken(t *testing.T) {
@@ -967,19 +985,19 @@ func TestAuthorizationService_FindAuthorizationByToken(t *testing.T) {
 		authorization by token string via headers or something
 	*/
 	t.Skip()
-	platformtesting.FindAuthorizationByToken(initAuthorizationService, t)
+	runAuthorizationServiceTest("TestAuthorizationService_FindAuthorizationByToken", platformtesting.FindAuthorizationByToken, initAuthorizationService, t)
 }
 
 func TestAuthorizationService_FindAuthorizations(t *testing.T) {
-	platformtesting.FindAuthorizations(initAuthorizationService, t)
+	runAuthorizationServiceTest("TestAuthorizationService_FindAuthorizations", platformtesting.FindAuthorizations, initAuthorizationService, t)
 }
 
 func TestAuthorizationService_DeleteAuthorization(t *testing.T) {
-	platformtesting.DeleteAuthorization(initAuthorizationService, t)
+	runAuthorizationServiceTest("TestAuthorizationService_DeleteAuthorization", platformtesting.DeleteAuthorization, initAuthorizationService, t)
 }
 
 func TestAuthorizationService_UpdateAuthorization(t *testing.T) {
-	platformtesting.UpdateAuthorization(initAuthorizationService, t)
+	runAuthorizationServiceTest("TestAuthorizationService_UpdateAuthorization", platformtesting.UpdateAuthorization, initAuthorizationService, t)
 }
 
 func MustMarshal(o interface{}) []byte {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -26,20 +27,34 @@ import (
 	"go.uber.org/zap/zaptest"
 )
 
+func runTestWithTokenHashing(name string, testFunc func(bool, *testing.T), t *testing.T) {
+	t.Helper()
+	for _, useTokenHashing := range []bool{false, true} {
+		t.Run(fmt.Sprintf("%s/TokenHashing=%t", name, useTokenHashing), func(t *testing.T) {
+			testFunc(useTokenHashing, t)
+		})
+	}
+}
+
 func TestBoltTaskService(t *testing.T) {
+	runTestWithTokenHashing("TestBoltTaskService", runTestBoltTaskService, t)
+}
+
+func runTestBoltTaskService(useTokenHashing bool, t *testing.T) {
 	servicetest.TestTaskService(
 		t,
 		func(t *testing.T) (*servicetest.System, context.CancelFunc) {
+			ctx, cancelFunc := context.WithCancel(context.Background())
+
 			store, close := itesting.NewTestBoltStore(t)
 
 			tenantStore := tenant.NewStore(store)
 			ts := tenant.NewService(tenantStore)
 
-			authStore, err := authorization.NewStore(store)
+			authStore, err := authorization.NewStore(ctx, store, useTokenHashing)
 			require.NoError(t, err)
 			authSvc := authorization.NewService(authStore, ts)
 
-			ctx, cancelFunc := context.WithCancel(context.Background())
 			service := kv.NewService(zaptest.NewLogger(t), store, ts, kv.ServiceConfig{
 				FluxLanguageService: fluxlang.DefaultService,
 			})
@@ -72,7 +87,7 @@ type testService struct {
 	Clock   clock.Clock
 }
 
-func newService(t *testing.T, ctx context.Context, c clock.Clock) *testService {
+func newService(t *testing.T, ctx context.Context, c clock.Clock, useTokenHashing bool) *testService {
 	t.Helper()
 
 	if c == nil {
@@ -86,16 +101,13 @@ func newService(t *testing.T, ctx context.Context, c clock.Clock) *testService {
 	)
 
 	store = itesting.NewTestInmemStore(t)
-	if err != nil {
-		t.Fatal("failed to create InmemStore", err)
-	}
 
 	ts.Store = store
 
 	tenantStore := tenant.NewStore(store)
 	tenantSvc := tenant.NewService(tenantStore)
 
-	authStore, err := authorization.NewStore(store)
+	authStore, err := authorization.NewStore(ctx, store, useTokenHashing)
 	require.NoError(t, err)
 	authSvc := authorization.NewService(authStore, tenantSvc)
 
@@ -135,10 +147,14 @@ func newService(t *testing.T, ctx context.Context, c clock.Clock) *testService {
 }
 
 func TestRetrieveTaskWithBadAuth(t *testing.T) {
+	runTestWithTokenHashing("TestRetrieveTaskWithBadAuth", runTestRetrieveTaskWithBadAuth, t)
+}
+
+func runTestRetrieveTaskWithBadAuth(useTokenHashing bool, t *testing.T) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
-	ts := newService(t, ctx, nil)
+	ts := newService(t, ctx, nil, useTokenHashing)
 
 	ctx = icontext.SetAuthorizer(ctx, &ts.Auth)
 
@@ -208,13 +224,17 @@ func TestRetrieveTaskWithBadAuth(t *testing.T) {
 }
 
 func TestService_UpdateTask_InactiveToActive(t *testing.T) {
+	runTestWithTokenHashing("TestService_UpdateTask_InactiveToActive", runTestService_UpdateTask_InactiveToActive, t)
+}
+
+func runTestService_UpdateTask_InactiveToActive(useTokenHashing bool, t *testing.T) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
 	c := clock.NewMock()
 	c.Set(time.Unix(1000, 0))
 
-	ts := newService(t, ctx, c)
+	ts := newService(t, ctx, c, useTokenHashing)
 
 	ctx = icontext.SetAuthorizer(ctx, &ts.Auth)
 
@@ -257,6 +277,10 @@ func TestService_UpdateTask_InactiveToActive(t *testing.T) {
 }
 
 func TestTaskRunCancellation(t *testing.T) {
+	runTestWithTokenHashing("TestTaskRunCancellation", runTestTaskRunCancellation, t)
+}
+
+func runTestTaskRunCancellation(useTokenHashing bool, t *testing.T) {
 	store, closeSvc := itesting.NewTestBoltStore(t)
 	defer closeSvc()
 
@@ -266,7 +290,7 @@ func TestTaskRunCancellation(t *testing.T) {
 	tenantStore := tenant.NewStore(store)
 	tenantSvc := tenant.NewService(tenantStore)
 
-	authStore, err := authorization.NewStore(store)
+	authStore, err := authorization.NewStore(ctx, store, useTokenHashing)
 	require.NoError(t, err)
 	authSvc := authorization.NewService(authStore, tenantSvc)
 
@@ -332,13 +356,17 @@ func TestTaskRunCancellation(t *testing.T) {
 }
 
 func TestService_UpdateTask_RecordLatestSuccessAndFailure(t *testing.T) {
+	runTestWithTokenHashing("TestService_UpdateTask_RecordLatestSuccessAndFailure", runTestService_UpdateTask_RecordLatestSuccessAndFailure, t)
+}
+
+func runTestService_UpdateTask_RecordLatestSuccessAndFailure(useTokenHashing bool, t *testing.T) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
 	c := clock.NewMock()
 	c.Set(time.Unix(1000, 0))
 
-	ts := newService(t, ctx, c)
+	ts := newService(t, ctx, c, useTokenHashing)
 
 	ctx = icontext.SetAuthorizer(ctx, &ts.Auth)
 

@@ -20,7 +20,8 @@ var ErrUnableToCreateToken = &errors.Error{
 // Authorization is an authorization. 🎉
 type Authorization struct {
 	ID          platform.ID  `json:"id"`
-	Token       string       `json:"token"`
+	Token       string       `json:"token,omitempty"`
+	HashedToken string       `json:"hashedToken,omitempty"`
 	Status      Status       `json:"status"`
 	Description string       `json:"description"`
 	OrgID       platform.ID  `json:"orgID"`

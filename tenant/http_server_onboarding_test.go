@@ -15,21 +15,21 @@ import (
 	"go.uber.org/zap/zaptest"
 )
 
-func initOnboardHttpService(f itesting.OnboardingFields, t *testing.T) (influxdb.OnboardingService, func()) {
+func initOnboardHttpService(f itesting.OnboardingFields, useTokenHashing bool, t *testing.T) (influxdb.OnboardingService, func()) {
 	t.Helper()
+	ctx := context.Background()
 
 	s := itesting.NewTestInmemStore(t)
 	storage := tenant.NewStore(s)
 
 	ten := tenant.NewService(storage)
 
-	authStore, err := authorization.NewStore(s)
+	authStore, err := authorization.NewStore(ctx, s, useTokenHashing)
 	require.NoError(t, err)
 	authSvc := authorization.NewService(authStore, ten)
 
 	svc := tenant.NewOnboardService(ten, authSvc)
 
-	ctx := context.Background()
 	if !f.IsOnboarding {
 		// create a dummy so so we can no longer onboard
 		err := ten.CreateUser(ctx, &influxdb.User{Name: "dummy", Status: influxdb.Active})

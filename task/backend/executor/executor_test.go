@@ -56,7 +56,16 @@ type tes struct {
 	tc      testCreds
 }
 
-func taskExecutorSystem(t *testing.T) tes {
+func runTestWithTokenHashing(name string, testFunc func(bool, *testing.T), t *testing.T) {
+	t.Helper()
+	for _, useTokenHashing := range []bool{false, true} {
+		t.Run(fmt.Sprintf("%s/TokenHashing=%t", name, useTokenHashing), func(t *testing.T) {
+			testFunc(useTokenHashing, t)
+		})
+	}
+}
+
+func taskExecutorSystem(useTokenHashing bool, t *testing.T) tes {
 	var (
 		aqs = newFakeQueryService()
 		qs  = query.QueryServiceBridge{
@@ -77,7 +86,7 @@ func taskExecutorSystem(t *testing.T) tes {
 	tenantStore := tenant.NewStore(store)
 	tenantSvc := tenant.NewService(tenantStore)
 
-	authStore, err := authorization.NewStore(store)
+	authStore, err := authorization.NewStore(ctx, store, useTokenHashing)
 	require.NoError(t, err)
 	authSvc := authorization.NewService(authStore, tenantSvc)
 
@@ -100,21 +109,22 @@ func taskExecutorSystem(t *testing.T) tes {
 }
 
 func TestTaskExecutor(t *testing.T) {
-	t.Run("QuerySuccess", testQuerySuccess)
-	t.Run("QueryFailure", testQueryFailure)
-	t.Run("ManualRun", testManualRun)
-	t.Run("ResumeRun", testResumingRun)
-	t.Run("WorkerLimit", testWorkerLimit)
-	t.Run("LimitFunc", testLimitFunc)
-	t.Run("Metrics", testMetrics)
-	t.Run("IteratorFailure", testIteratorFailure)
-	t.Run("ErrorHandling", testErrorHandling)
+
+	runTestWithTokenHashing("QuerySuccess", testQuerySuccess, t)
+	runTestWithTokenHashing("QueryFailure", testQueryFailure, t)
+	runTestWithTokenHashing("ManualRun", testManualRun, t)
+	runTestWithTokenHashing("ResumeRun", testResumingRun, t)
+	runTestWithTokenHashing("WorkerLimit", testWorkerLimit, t)
+	runTestWithTokenHashing("LimitFunc", testLimitFunc, t)
+	runTestWithTokenHashing("Metrics", testMetrics, t)
+	runTestWithTokenHashing("IteratorFailure", testIteratorFailure, t)
+	runTestWithTokenHashing("ErrorHandling", testErrorHandling, t)
 }
 
-func testQuerySuccess(t *testing.T) {
+func testQuerySuccess(useTokenHashing bool, t *testing.T) {
 	t.Parallel()
 
-	tes := taskExecutorSystem(t)
+	tes := taskExecutorSystem(useTokenHashing, t)
 
 	var (
 		script = fmt.Sprintf(fmtTestScript, t.Name())
@@ -179,9 +189,9 @@ func testQuerySuccess(t *testing.T) {
 	}
 }
 
-func testQueryFailure(t *testing.T) {
+func testQueryFailure(useTokenHashing bool, t *testing.T) {
 	t.Parallel()
-	tes := taskExecutorSystem(t)
+	tes := taskExecutorSystem(useTokenHashing, t)
 
 	script := fmt.Sprintf(fmtTestScript, t.Name())
 	ctx := icontext.SetAuthorizer(context.Background(), tes.tc.Auth)
@@ -215,9 +225,9 @@ func testQueryFailure(t *testing.T) {
 	}
 }
 
-func testManualRun(t *testing.T) {
+func testManualRun(useTokenHashing bool, t *testing.T) {
 	t.Parallel()
-	tes := taskExecutorSystem(t)
+	tes := taskExecutorSystem(useTokenHashing, t)
 
 	script := fmt.Sprintf(fmtTestScript, t.Name())
 	ctx := icontext.SetAuthorizer(context.Background(), tes.tc.Auth)
@@ -262,9 +272,9 @@ func testManualRun(t *testing.T) {
 	}
 }
 
-func testResumingRun(t *testing.T) {
+func testResumingRun(useTokenHashing bool, t *testing.T) {
 	t.Parallel()
-	tes := taskExecutorSystem(t)
+	tes := taskExecutorSystem(useTokenHashing, t)
 
 	script := fmt.Sprintf(fmtTestScript, t.Name())
 	ctx := icontext.SetAuthorizer(context.Background(), tes.tc.Auth)
@@ -305,9 +315,9 @@ func testResumingRun(t *testing.T) {
 	}
 }
 
-func testWorkerLimit(t *testing.T) {
+func testWorkerLimit(useTokenHashing bool, t *testing.T) {
 	t.Parallel()
-	tes := taskExecutorSystem(t)
+	tes := taskExecutorSystem(useTokenHashing, t)
 
 	script := fmt.Sprintf(fmtTestScript, t.Name())
 	ctx := icontext.SetAuthorizer(context.Background(), tes.tc.Auth)
@@ -335,9 +345,9 @@ func testWorkerLimit(t *testing.T) {
 	}
 }
 
-func testLimitFunc(t *testing.T) {
+func testLimitFunc(useTokenHashing bool, t *testing.T) {
 	t.Parallel()
-	tes := taskExecutorSystem(t)
+	tes := taskExecutorSystem(useTokenHashing, t)
 
 	script := fmt.Sprintf(fmtTestScript, t.Name())
 	ctx := icontext.SetAuthorizer(context.Background(), tes.tc.Auth)
@@ -374,9 +384,9 @@ func testLimitFunc(t *testing.T) {
 	}
 }
 
-func testMetrics(t *testing.T) {
+func testMetrics(useTokenHashing bool, t *testing.T) {
 	t.Parallel()
-	tes := taskExecutorSystem(t)
+	tes := taskExecutorSystem(useTokenHashing, t)
 	metrics := tes.metrics
 	reg := prom.NewRegistry(zaptest.NewLogger(t))
 	reg.MustRegister(metrics.PrometheusCollectors()...)
@@ -445,9 +455,9 @@ func testMetrics(t *testing.T) {
 	assert.Greater(t, *m.Histogram.SampleSum, float64(100), "run latency metric unexpectedly small")
 }
 
-func testIteratorFailure(t *testing.T) {
+func testIteratorFailure(useTokenHashing bool, t *testing.T) {
 	t.Parallel()
-	tes := taskExecutorSystem(t)
+	tes := taskExecutorSystem(useTokenHashing, t)
 
 	// replace iterator exhaust function with one which errors
 	tes.ex.workerPool = sync.Pool{New: func() interface{} {
@@ -493,9 +503,9 @@ func testIteratorFailure(t *testing.T) {
 	}
 }
 
-func testErrorHandling(t *testing.T) {
+func testErrorHandling(useTokenHashing bool, t *testing.T) {
 	t.Parallel()
-	tes := taskExecutorSystem(t)
+	tes := taskExecutorSystem(useTokenHashing, t)
 
 	metrics := tes.metrics
 	reg := prom.NewRegistry(zaptest.NewLogger(t))
@@ -540,9 +550,13 @@ func testErrorHandling(t *testing.T) {
 }
 
 func TestPromiseFailure(t *testing.T) {
+	runTestWithTokenHashing("TestPromiseFailure", testPromiseFailure, t)
+}
+
+func testPromiseFailure(useTokenHashing bool, t *testing.T) {
 	t.Parallel()
 
-	tes := taskExecutorSystem(t)
+	tes := taskExecutorSystem(useTokenHashing, t)
 
 	var (
 		script = fmt.Sprintf(fmtTestScript, t.Name())

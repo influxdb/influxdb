@@ -75,10 +75,18 @@ func (cmd *authListCommand) run() error {
 	defer store.Close()
 	tenantStore := tenant.NewStore(store)
 	tenantService := tenant.NewService(tenantStore)
-	authStore, err := authorization.NewStore(store)
+
+	// Giving an already extant AuthorizationHasher avoids scanning the existing hashes in the store.
+	hasher, err := authorization.NewAuthorizationHasher()
 	if err != nil {
 		return err
 	}
+	// Create authStore read-only since we're not properly configuring if hashed tokens are enabled.
+	authStore, err := authorization.NewStore(ctx, store, false, authorization.WithReadOnly(true), authorization.WithAuthorizationHasher(hasher))
+	if err != nil {
+		return err
+	}
+	// The value of useHashedTokens doesn't matter since authStore is read-only.
 	auth := authorization.NewService(authStore, tenantService)
 	filter := influxdb.AuthorizationFilter{}
 	auths, _, err := auth.FindAuthorizations(ctx, filter)
@@ -95,6 +103,8 @@ type authCreateCommand struct {
 	out      io.Writer
 	username string
 	org      string
+
+	useTokenHashing bool
 }
 
 func NewAuthCreateCommand() *cobra.Command {
@@ -120,6 +130,7 @@ func NewAuthCreateCommand() *cobra.Command {
 	cmd.Flags().StringVar(&authCmd.boltPath, "bolt-path", defaultPath, "Path to the BoltDB file")
 	cmd.Flags().StringVar(&authCmd.username, "username", "", "Name of the user")
 	cmd.Flags().StringVar(&authCmd.org, "org", "", "Name of the org")
+	cmd.Flags().BoolVar(&authCmd.useTokenHashing, "store-token-hashes", false, "Store token hashes")
 
 	return cmd
 }
@@ -133,7 +144,10 @@ func (cmd *authCreateCommand) run() error {
 	defer store.Close()
 	tenantStore := tenant.NewStore(store)
 	tenantService := tenant.NewService(tenantStore)
-	authStore, err := authorization.NewStore(store)
+	hashVariantName := authorization.DefaultHashVariantName // In the future this could come from cmd
+	ignoreMissingHashIndex := !cmd.useTokenHashing          // we can ignore a missing index only if the user did not request token hashing
+	authStore, err := authorization.NewStore(ctx, store, cmd.useTokenHashing,
+		authorization.WithAuthorizationHashVariantName(hashVariantName), authorization.WithIgnoreMissingHashIndex(ignoreMissingHashIndex))
 	if err != nil {
 		return err
 	}
@@ -197,12 +211,20 @@ func PrintAuth(ctx context.Context, w io.Writer, v []*influxdb.Authorization, us
 		if err == nil && user != nil {
 			userName = user.Name
 		}
+		var token string
+		if t.Token != "" {
+			token = t.Token
+		} else if t.HashedToken != "" {
+			token = "REDACTED"
+		} else {
+			token = "N/A"
+		}
 		row := map[string]interface{}{
 			"ID":          t.ID,
 			"Description": t.Description,
 			"User Name":   userName,
 			"User ID":     t.UserID,
-			"Token":       t.Token,
+			"Token":       token,
 			"Permissions": t.Permissions,
 		}
 		rows = append(rows, row)

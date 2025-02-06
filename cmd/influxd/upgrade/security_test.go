@@ -143,165 +143,167 @@ func TestUpgradeSecurity(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) { // better do not run in parallel
-			ctx := context.Background()
-			log := zaptest.NewLogger(t)
+		for _, useHashedTokens := range []bool{false, true} {
+			tc := tc
+			t.Run(fmt.Sprintf("%s/HashedTokens=%t", tc.name, useHashedTokens), func(t *testing.T) { // better do not run in parallel
+				ctx := context.Background()
+				log := zaptest.NewLogger(t)
 
-			// mock v1 meta
-			v1 := &influxDBv1{
-				meta: &meta.Client{},
-			}
-			data := &meta.Data{
-				Users: tc.users,
-			}
-			f := reflect.ValueOf(v1.meta).Elem().Field(4)
-			f = reflect.NewAt(f.Type(), unsafe.Pointer(f.UnsafeAddr())).Elem()
-			f.Set(reflect.ValueOf(data))
-
-			// mock v2 meta
-			kvStore := inmem.NewKVStore()
-			migrator, err := migration.NewMigrator(zap.NewNop(), kvStore, all.Migrations[:]...)
-			require.NoError(t, err)
-			err = migrator.Up(ctx)
-			require.NoError(t, err)
-
-			authStoreV1, err := authv1.NewStore(kvStore)
-			require.NoError(t, err)
-
-			tenantStore := tenant.NewStore(kvStore)
-			tenantSvc := tenant.NewService(tenantStore)
-
-			authStoreV2, err := authorization.NewStore(kvStore)
-			require.NoError(t, err)
-
-			v2 := &influxDBv2{
-				authSvc: authv1.NewService(authStoreV1, tenantSvc),
-				onboardSvc: tenant.NewOnboardService(
-					tenantSvc,
-					authorization.NewService(authStoreV2, tenantSvc),
-				),
-			}
-
-			// onboard admin
-			oReq := &influxdb.OnboardingRequest{
-				User:                   "admin",
-				Password:               "12345678",
-				Org:                    "testers",
-				Bucket:                 "def",
-				RetentionPeriodSeconds: influxdb.InfiniteRetention,
-			}
-			oResp, err := setupAdmin(ctx, v2, oReq)
-			require.NoError(t, err)
-
-			// target options
-			targetOptions := optionsV2{
-				userName: oReq.User,
-				orgName:  oReq.Org,
-				token:    oResp.Auth.Token,
-				orgID:    oResp.Auth.OrgID,
-				userID:   oResp.Auth.UserID,
-			}
-
-			for k, v := range tc.db2ids {
-				for i, id := range v {
-					b := &influxdb.Bucket{
-						ID:    id,
-						Name:  fmt.Sprintf("%s_%d", k, id),
-						OrgID: targetOptions.orgID,
-					}
-					err := tenantSvc.CreateBucket(context.Background(), b)
-					require.NoError(t, err)
-					tc.db2ids[k][i] = b.ID
+				// mock v1 meta
+				v1 := &influxDBv1{
+					meta: &meta.Client{},
 				}
-			}
+				data := &meta.Data{
+					Users: tc.users,
+				}
+				f := reflect.ValueOf(v1.meta).Elem().Field(4)
+				f = reflect.NewAt(f.Type(), unsafe.Pointer(f.UnsafeAddr())).Elem()
+				f.Set(reflect.ValueOf(data))
 
-			// fill in expected permissions now that we know IDs
-			for _, want := range tc.want {
-				for _, user := range tc.users {
-					if want.Token == user.Name { // v1 username is v2 token
-						var permissions []influxdb.Permission
-						for db, privilege := range user.Privileges {
-							ids, ok := tc.db2ids[db]
-							require.True(t, ok)
-							for _, id := range ids {
-								id := id
-								resource := influxdb.Resource{
-									Type:  influxdb.BucketsResourceType,
-									OrgID: &targetOptions.orgID,
-									ID:    &id,
-								}
-								switch privilege {
-								case influxql.ReadPrivilege:
-									permissions = append(permissions, influxdb.Permission{
-										Action:   influxdb.ReadAction,
-										Resource: resource,
-									})
-								case influxql.WritePrivilege:
-									permissions = append(permissions, influxdb.Permission{
-										Action:   influxdb.WriteAction,
-										Resource: resource,
-									})
-								case influxql.AllPrivileges:
-									permissions = append(permissions, influxdb.Permission{
-										Action:   influxdb.ReadAction,
-										Resource: resource,
-									})
-									permissions = append(permissions, influxdb.Permission{
-										Action:   influxdb.WriteAction,
-										Resource: resource,
-									})
+				// mock v2 meta
+				kvStore := inmem.NewKVStore()
+				migrator, err := migration.NewMigrator(zap.NewNop(), kvStore, all.Migrations[:]...)
+				require.NoError(t, err)
+				err = migrator.Up(ctx)
+				require.NoError(t, err)
+
+				authStoreV1, err := authv1.NewStore(kvStore)
+				require.NoError(t, err)
+
+				tenantStore := tenant.NewStore(kvStore)
+				tenantSvc := tenant.NewService(tenantStore)
+
+				authStoreV2, err := authorization.NewStore(ctx, kvStore, useHashedTokens)
+				require.NoError(t, err)
+
+				v2 := &influxDBv2{
+					authSvc: authv1.NewService(authStoreV1, tenantSvc),
+					onboardSvc: tenant.NewOnboardService(
+						tenantSvc,
+						authorization.NewService(authStoreV2, tenantSvc),
+					),
+				}
+
+				// onboard admin
+				oReq := &influxdb.OnboardingRequest{
+					User:                   "admin",
+					Password:               "12345678",
+					Org:                    "testers",
+					Bucket:                 "def",
+					RetentionPeriodSeconds: influxdb.InfiniteRetention,
+				}
+				oResp, err := setupAdmin(ctx, v2, oReq)
+				require.NoError(t, err)
+
+				// target options
+				targetOptions := optionsV2{
+					userName: oReq.User,
+					orgName:  oReq.Org,
+					token:    oResp.Auth.Token,
+					orgID:    oResp.Auth.OrgID,
+					userID:   oResp.Auth.UserID,
+				}
+
+				for k, v := range tc.db2ids {
+					for i, id := range v {
+						b := &influxdb.Bucket{
+							ID:    id,
+							Name:  fmt.Sprintf("%s_%d", k, id),
+							OrgID: targetOptions.orgID,
+						}
+						err := tenantSvc.CreateBucket(context.Background(), b)
+						require.NoError(t, err)
+						tc.db2ids[k][i] = b.ID
+					}
+				}
+
+				// fill in expected permissions now that we know IDs
+				for _, want := range tc.want {
+					for _, user := range tc.users {
+						if want.Token == user.Name { // v1 username is v2 token
+							var permissions []influxdb.Permission
+							for db, privilege := range user.Privileges {
+								ids, ok := tc.db2ids[db]
+								require.True(t, ok)
+								for _, id := range ids {
+									id := id
+									resource := influxdb.Resource{
+										Type:  influxdb.BucketsResourceType,
+										OrgID: &targetOptions.orgID,
+										ID:    &id,
+									}
+									switch privilege {
+									case influxql.ReadPrivilege:
+										permissions = append(permissions, influxdb.Permission{
+											Action:   influxdb.ReadAction,
+											Resource: resource,
+										})
+									case influxql.WritePrivilege:
+										permissions = append(permissions, influxdb.Permission{
+											Action:   influxdb.WriteAction,
+											Resource: resource,
+										})
+									case influxql.AllPrivileges:
+										permissions = append(permissions, influxdb.Permission{
+											Action:   influxdb.ReadAction,
+											Resource: resource,
+										})
+										permissions = append(permissions, influxdb.Permission{
+											Action:   influxdb.WriteAction,
+											Resource: resource,
+										})
+									}
 								}
 							}
+							want.Permissions = permissions
 						}
-						want.Permissions = permissions
 					}
 				}
-			}
 
-			// command execution
-			n, err := upgradeUsers(ctx, v1, v2, &targetOptions, tc.db2ids, log)
-			assert.Equal(t, len(tc.want), n, "Upgraded count must match")
-			if err != nil {
-				if tc.wantErr != nil {
-					if diff := cmp.Diff(tc.wantErr.Error(), err.Error()); diff != "" {
+				// command execution
+				n, err := upgradeUsers(ctx, v1, v2, &targetOptions, tc.db2ids, log)
+				assert.Equal(t, len(tc.want), n, "Upgraded count must match")
+				if err != nil {
+					if tc.wantErr != nil {
+						if diff := cmp.Diff(tc.wantErr.Error(), err.Error()); diff != "" {
+							t.Fatal(diff)
+						}
+					} else {
+						t.Fatal(err)
+					}
+				} else if tc.wantErr != nil {
+					t.Fatalf("should have failed with %v", tc.wantErr)
+				}
+				for _, want := range tc.want {
+					actual, err := v2.authSvc.FindAuthorizationByToken(ctx, want.Token)
+					require.NoError(t, err)
+					if diff := cmp.Diff(targetOptions.orgID, actual.OrgID); diff != "" {
 						t.Fatal(diff)
 					}
-				} else {
-					t.Fatal(err)
+					if diff := cmp.Diff(targetOptions.userID, actual.UserID); diff != "" {
+						t.Fatal(diff)
+					}
+					if diff := cmp.Diff(want.Token, actual.Token); diff != "" {
+						t.Fatal(diff)
+					}
+					if diff := cmp.Diff(want.Description, actual.Description); diff != "" {
+						t.Fatal(diff)
+					}
+					if diff := cmp.Diff(want.Status, actual.Status); diff != "" {
+						t.Fatal(diff)
+					}
+					sort.Slice(want.Permissions, func(i, j int) bool {
+						return *(want.Permissions[i].Resource.ID) < *(want.Permissions[j].Resource.ID)
+					})
+					sort.Slice(actual.Permissions, func(i, j int) bool {
+						return *(actual.Permissions[i].Resource.ID) < *(actual.Permissions[j].Resource.ID)
+					})
+					if diff := cmp.Diff(want.Permissions, actual.Permissions); diff != "" {
+						t.Logf("permissions mismatch for user %s", want.Token)
+						t.Fatal(diff)
+					}
 				}
-			} else if tc.wantErr != nil {
-				t.Fatalf("should have failed with %v", tc.wantErr)
-			}
-			for _, want := range tc.want {
-				actual, err := v2.authSvc.FindAuthorizationByToken(ctx, want.Token)
-				require.NoError(t, err)
-				if diff := cmp.Diff(targetOptions.orgID, actual.OrgID); diff != "" {
-					t.Fatal(diff)
-				}
-				if diff := cmp.Diff(targetOptions.userID, actual.UserID); diff != "" {
-					t.Fatal(diff)
-				}
-				if diff := cmp.Diff(want.Token, actual.Token); diff != "" {
-					t.Fatal(diff)
-				}
-				if diff := cmp.Diff(want.Description, actual.Description); diff != "" {
-					t.Fatal(diff)
-				}
-				if diff := cmp.Diff(want.Status, actual.Status); diff != "" {
-					t.Fatal(diff)
-				}
-				sort.Slice(want.Permissions, func(i, j int) bool {
-					return *(want.Permissions[i].Resource.ID) < *(want.Permissions[j].Resource.ID)
-				})
-				sort.Slice(actual.Permissions, func(i, j int) bool {
-					return *(actual.Permissions[i].Resource.ID) < *(actual.Permissions[j].Resource.ID)
-				})
-				if diff := cmp.Diff(want.Permissions, actual.Permissions); diff != "" {
-					t.Logf("permissions mismatch for user %s", want.Token)
-					t.Fatal(diff)
-				}
-			}
-		})
+			})
+		}
 	}
 }

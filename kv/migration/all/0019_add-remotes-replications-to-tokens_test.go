@@ -12,11 +12,15 @@ import (
 )
 
 func TestMigration_RemotesReplicationsOperToken(t *testing.T) {
+	runTestWithTokenHashing("TestMigration_RemotesReplicationsOperToken", runTestMigration_RemotesReplicationsOperToken, t)
+}
+
+func runTestMigration_RemotesReplicationsOperToken(useTokenHashing bool, t *testing.T) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
 	// Run up to migration 18.
-	ts := newService(t, ctx, 18)
+	ts := newService(t, ctx, 18, useTokenHashing)
 
 	// Auth bucket contains the authorizations AKA tokens
 	authBucket := []byte("authorizationsv1")
@@ -131,11 +135,15 @@ func TestMigration_RemotesReplicationsOperToken(t *testing.T) {
 }
 
 func TestMigration_RemotesReplicationsAllAccessToken(t *testing.T) {
+	runTestWithTokenHashing("TestMigration_RemotesReplicationsAllAccessToken", runTestMigration_RemotesReplicationsAllAccessToken, t)
+}
+
+func runTestMigration_RemotesReplicationsAllAccessToken(useTokenHashing bool, t *testing.T) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
 	// Run up to migration 18.
-	ts := newService(t, ctx, 18)
+	ts := newService(t, ctx, 18, useTokenHashing)
 
 	// Auth bucket contains the authorizations AKA tokens
 	authBucket := []byte("authorizationsv1")

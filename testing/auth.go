@@ -24,7 +24,7 @@ const (
 
 var authorizationCmpOptions = cmp.Options{
 	cmpopts.EquateEmpty(),
-	cmpopts.IgnoreFields(influxdb.Authorization{}, "ID", "Token", "CreatedAt", "UpdatedAt"),
+	cmpopts.IgnoreFields(influxdb.Authorization{}, "ID", "Token", "HashedToken", "CreatedAt", "UpdatedAt"),
 	cmp.Comparer(func(x, y []byte) bool {
 		return bytes.Equal(x, y)
 	}),
@@ -706,6 +706,7 @@ func FindAuthorizationByToken(
 		authorization *influxdb.Authorization
 	}
 
+	// VALIS: Add tests to make sure look-up by hashed token does /not/ work
 	tests := []struct {
 		name   string
 		fields AuthorizationFields
@@ -874,6 +875,7 @@ func FindAuthorizations(
 		token  string
 	}
 
+	// VALIS: Do we need tests that set HashedToken, or tests with Token and HashedToken set?
 	type wants struct {
 		authorizations []*influxdb.Authorization
 		err            error

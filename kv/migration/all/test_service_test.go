@@ -2,6 +2,7 @@ package all
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/benbjohnson/clock"
@@ -11,6 +12,7 @@ import (
 	"github.com/influxdata/influxdb/v2/kv"
 	"github.com/influxdata/influxdb/v2/kv/migration"
 	"github.com/influxdata/influxdb/v2/tenant"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 )
 
@@ -23,7 +25,16 @@ type testService struct {
 	Clock   clock.Clock
 }
 
-func newService(t *testing.T, ctx context.Context, endMigration int) *testService {
+func runTestWithTokenHashing(name string, testFunc func(bool, *testing.T), t *testing.T) {
+	t.Helper()
+	for _, useTokenHashing := range []bool{false, true} {
+		t.Run(fmt.Sprintf("%s/TokenHashing=%t", name, useTokenHashing), func(t *testing.T) {
+			testFunc(useTokenHashing, t)
+		})
+	}
+}
+
+func newService(t *testing.T, ctx context.Context, endMigration int, useTokenHashing bool) *testService {
 	t.Helper()
 
 	var (
@@ -46,10 +57,18 @@ func newService(t *testing.T, ctx context.Context, endMigration int) *testServic
 	store := tenant.NewStore(ts.Store)
 	tenantSvc := tenant.NewService(store)
 
-	authStore, err := authorization.NewStore(ts.Store)
-	if err != nil {
-		t.Fatal(err)
+	var ignoreMissingHashIndex bool
+	if endMigration <= 21 {
+		ignoreMissingHashIndex = true
 	}
+	missingHashIndexOption := authorization.WithIgnoreMissingHashIndex(ignoreMissingHashIndex)
+	authStore, err := authorization.NewStore(ctx, ts.Store, useTokenHashing, missingHashIndexOption)
+	if useTokenHashing && ignoreMissingHashIndex {
+		require.ErrorIs(t, err, kv.ErrBucketNotFound)
+		t.Skipf("migrationLevel=%d with useTokenHashing=%t is not a valid combination", endMigration, useTokenHashing)
+	}
+	require.NoError(t, err)
+
 	authSvc := authorization.NewService(authStore, tenantSvc)
 
 	ts.Service = kv.NewService(logger, ts.Store, tenantSvc)

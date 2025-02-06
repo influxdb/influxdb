@@ -2,6 +2,7 @@ package authorizer_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -19,38 +20,43 @@ import (
 	"github.com/influxdata/influxdb/v2/task/taskmodel"
 	"github.com/influxdata/influxdb/v2/tenant"
 	"github.com/pkg/errors"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 )
 
 func TestOnboardingValidation(t *testing.T) {
-	_, onboard := setup(t)
+	for _, useHashedTokens := range []bool{false, true} {
+		t.Run(fmt.Sprintf("TestOnboardingValidation/HashedTokens=%t", useHashedTokens), func(t *testing.T) {
+			_, onboard := setup(t, useHashedTokens)
 
-	ts := authorizer.NewTaskService(zaptest.NewLogger(t), mockTaskService(3, 2, 1))
+			ts := authorizer.NewTaskService(zaptest.NewLogger(t), mockTaskService(3, 2, 1))
 
-	r, err := onboard.OnboardInitialUser(context.Background(), &influxdb.OnboardingRequest{
-		User:                   "Setec Astronomy",
-		Password:               "too many secrets",
-		Org:                    "thing",
-		Bucket:                 "holder",
-		RetentionPeriodSeconds: 1,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+			r, err := onboard.OnboardInitialUser(context.Background(), &influxdb.OnboardingRequest{
+				User:                   "Setec Astronomy",
+				Password:               "too many secrets",
+				Org:                    "thing",
+				Bucket:                 "holder",
+				RetentionPeriodSeconds: 1,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
 
-	ctx := pctx.SetAuthorizer(context.Background(), r.Auth)
+			ctx := pctx.SetAuthorizer(context.Background(), r.Auth)
 
-	_, err = ts.CreateTask(ctx, taskmodel.TaskCreate{
-		OrganizationID: r.Org.ID,
-		OwnerID:        r.Auth.GetUserID(),
-		Flux: `option task = {
+			_, err = ts.CreateTask(ctx, taskmodel.TaskCreate{
+				OrganizationID: r.Org.ID,
+				OwnerID:        r.Auth.GetUserID(),
+				Flux: `option task = {
  name: "my_task",
  every: 1s,
 }
 from(bucket:"holder") |> range(start:-5m) |> to(bucket:"holder", org:"thing")`,
-	})
-	if err != nil {
-		t.Fatal(err)
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 
@@ -119,13 +125,19 @@ from(bucket:"holder") |> range(start:-5m) |> to(bucket:"holder", org:"thing")`,
 }
 
 func TestValidations(t *testing.T) {
+	for _, useHashedTokens := range []bool{false, true} {
+		runTestValidations(useHashedTokens, t)
+	}
+}
+
+func runTestValidations(useHashedTokens bool, t *testing.T) {
 	var (
 		taskID   = platform.ID(0x7456)
 		runID    = platform.ID(0x402)
 		otherOrg = &influxdb.Organization{Name: "other_org"}
 	)
 
-	svc, onboard := setup(t)
+	svc, onboard := setup(t, useHashedTokens)
 
 	r, err := onboard.OnboardInitialUser(context.Background(), &influxdb.OnboardingRequest{
 		User:                   "Setec Astronomy",
@@ -565,7 +577,7 @@ from(bucket:"holder") |> range(start:-5m) |> to(bucket:"holder", org:"thing")`
 	}
 
 	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
+		t.Run(fmt.Sprintf("%s/HashedTokens=%t", test.name, useHashedTokens), func(t *testing.T) {
 			ctx := pctx.SetAuthorizer(context.Background(), test.auth)
 			if err := test.check(ctx, validTaskService); err != nil {
 				if aerr, ok := err.(http.AuthzError); ok {
@@ -577,17 +589,15 @@ from(bucket:"holder") |> range(start:-5m) |> to(bucket:"holder", org:"thing")`
 	}
 }
 
-func setup(t *testing.T) (*tenant.Service, influxdb.OnboardingService) {
+func setup(t *testing.T, useHashedTokens bool) (*tenant.Service, influxdb.OnboardingService) {
 	t.Helper()
 
 	store := newStore(t)
 
 	svc := tenant.NewService(tenant.NewStore(store))
 
-	authStore, err := authorization.NewStore(store)
-	if err != nil {
-		t.Fatal(err)
-	}
+	authStore, err := authorization.NewStore(context.Background(), store, useHashedTokens)
+	require.NoError(t, err)
 
 	authSvc := authorization.NewService(authStore, svc)
 

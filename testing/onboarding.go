@@ -2,6 +2,7 @@ package testing
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -39,7 +40,7 @@ type OnboardingFields struct {
 
 // OnboardInitialUser testing
 func OnboardInitialUser(
-	init func(OnboardingFields, *testing.T) (platform.OnboardingService, func()),
+	init func(OnboardingFields, bool, *testing.T) (platform.OnboardingService, func()),
 	t *testing.T,
 ) {
 	type args struct {
@@ -187,27 +188,28 @@ func OnboardInitialUser(
 		},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			s, done := init(tt.fields, t)
-			defer done()
-			ctx := context.Background()
-			results, err := s.OnboardInitialUser(ctx, tt.args.request)
-			if (err != nil) != (tt.wants.errCode != "") {
-				t.Logf("Error: %v", err)
-				t.Fatalf("expected error code '%s' got '%v'", tt.wants.errCode, err)
-			}
-			if err != nil && tt.wants.errCode != "" {
-				if code := errors.ErrorCode(err); code != tt.wants.errCode {
+		for _, useTokenHashing := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/TokenHashing=%t", tt.name, useTokenHashing), func(t *testing.T) {
+				s, done := init(tt.fields, useTokenHashing, t)
+				defer done()
+				ctx := context.Background()
+				results, err := s.OnboardInitialUser(ctx, tt.args.request)
+				if (err != nil) != (tt.wants.errCode != "") {
 					t.Logf("Error: %v", err)
-					t.Fatalf("expected error code to match '%s' got '%v'", tt.wants.errCode, code)
+					t.Fatalf("expected error code '%s' got '%v'", tt.wants.errCode, err)
 				}
-			}
-			if diff := cmp.Diff(results, tt.wants.results, onboardCmpOptions); diff != "" {
-				t.Errorf("onboarding results are different -got/+want\ndiff %s", diff)
-			}
-		})
+				if err != nil && tt.wants.errCode != "" {
+					if code := errors.ErrorCode(err); code != tt.wants.errCode {
+						t.Logf("Error: %v", err)
+						t.Fatalf("expected error code to match '%s' got '%v'", tt.wants.errCode, code)
+					}
+				}
+				if diff := cmp.Diff(results, tt.wants.results, onboardCmpOptions); diff != "" {
+					t.Errorf("onboarding results are different -got/+want\ndiff %s", diff)
+				}
+			})
+		}
 	}
-
 }
 
 const (

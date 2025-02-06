@@ -12,6 +12,7 @@ import (
 	"github.com/influxdata/influxdb/v2/kit/platform"
 	"github.com/influxdata/influxdb/v2/kv"
 	"github.com/influxdata/influxdb/v2/kv/migration/all"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 )
 
@@ -36,12 +37,12 @@ func TestAuth(t *testing.T) {
 		name    string
 		setup   func(*testing.T, *authorization.Store, kv.Tx)
 		update  func(*testing.T, *authorization.Store, kv.Tx)
-		results func(*testing.T, *authorization.Store, kv.Tx)
+		results func(*testing.T, bool, *authorization.Store, *authorization.AuthorizationHasher, kv.Tx)
 	}{
 		{
 			name:  "create",
 			setup: setup,
-			results: func(t *testing.T, store *authorization.Store, tx kv.Tx) {
+			results: func(t *testing.T, useHashedTokens bool, store *authorization.Store, hasher *authorization.AuthorizationHasher, tx kv.Tx) {
 				auths, err := store.ListAuthorizations(context.Background(), tx, influxdb.AuthorizationFilter{})
 				if err != nil {
 					t.Fatal(err)
@@ -53,13 +54,20 @@ func TestAuth(t *testing.T) {
 
 				expected := []*influxdb.Authorization{}
 				for i := 1; i <= 10; i++ {
-					expected = append(expected, &influxdb.Authorization{
+					a := &influxdb.Authorization{
 						ID:     platform.ID(i),
 						Token:  fmt.Sprintf("randomtoken%d", i),
 						OrgID:  platform.ID(i),
 						UserID: platform.ID(i),
 						Status: "active",
-					})
+					}
+					if useHashedTokens {
+						hashedToken, err := hasher.Hash(a.Token)
+						require.NoError(t, err)
+						a.HashedToken = hashedToken
+						a.Token = ""
+					}
+					expected = append(expected, a)
 				}
 				if !reflect.DeepEqual(auths, expected) {
 					t.Fatalf("expected identical authorizations: \n%+v\n%+v", auths, expected)
@@ -80,7 +88,7 @@ func TestAuth(t *testing.T) {
 		{
 			name:  "read",
 			setup: setup,
-			results: func(t *testing.T, store *authorization.Store, tx kv.Tx) {
+			results: func(t *testing.T, useHashedTokens bool, store *authorization.Store, hasher *authorization.AuthorizationHasher, tx kv.Tx) {
 				for i := 1; i <= 10; i++ {
 					expectedAuth := &influxdb.Authorization{
 						ID:     platform.ID(i),
@@ -88,6 +96,12 @@ func TestAuth(t *testing.T) {
 						OrgID:  platform.ID(i),
 						UserID: platform.ID(i),
 						Status: influxdb.Active,
+					}
+					if useHashedTokens {
+						hashedToken, err := hasher.Hash(expectedAuth.Token)
+						require.NoError(t, err)
+						expectedAuth.HashedToken = hashedToken
+						expectedAuth.Token = ""
 					}
 
 					authByID, err := store.GetAuthorizationByID(context.Background(), tx, platform.ID(i))
@@ -129,7 +143,7 @@ func TestAuth(t *testing.T) {
 					}
 				}
 			},
-			results: func(t *testing.T, store *authorization.Store, tx kv.Tx) {
+			results: func(t *testing.T, useHashedTokens bool, store *authorization.Store, hasher *authorization.AuthorizationHasher, tx kv.Tx) {
 
 				for i := 1; i <= 10; i++ {
 					auth, err := store.GetAuthorizationByID(context.Background(), tx, platform.ID(i))
@@ -143,6 +157,12 @@ func TestAuth(t *testing.T) {
 						OrgID:  platform.ID(i),
 						UserID: platform.ID(i),
 						Status: influxdb.Inactive,
+					}
+					if useHashedTokens {
+						hashedToken, err := hasher.Hash(expectedAuth.Token)
+						require.NoError(t, err)
+						expectedAuth.HashedToken = hashedToken
+						expectedAuth.Token = ""
 					}
 
 					if !reflect.DeepEqual(auth, expectedAuth) {
@@ -162,7 +182,7 @@ func TestAuth(t *testing.T) {
 					}
 				}
 			},
-			results: func(t *testing.T, store *authorization.Store, tx kv.Tx) {
+			results: func(t *testing.T, useHashedTokens bool, store *authorization.Store, hasher *authorization.AuthorizationHasher, tx kv.Tx) {
 				for i := 1; i <= 10; i++ {
 					_, err := store.GetAuthorizationByID(context.Background(), tx, platform.ID(i))
 					if err == nil {
@@ -174,52 +194,58 @@ func TestAuth(t *testing.T) {
 	}
 
 	for _, testScenario := range tt {
-		t.Run(testScenario.name, func(t *testing.T) {
-			store := inmem.NewKVStore()
-			if err := all.Up(context.Background(), zaptest.NewLogger(t), store); err != nil {
-				t.Fatal(err)
-			}
+		for _, useHashedTokens := range []bool{false, true} {
 
-			ts, err := authorization.NewStore(store)
-			if err != nil {
-				t.Fatal(err)
-			}
+			t.Run(testScenario.name, func(t *testing.T) {
+				store := inmem.NewKVStore()
+				if err := all.Up(context.Background(), zaptest.NewLogger(t), store); err != nil {
+					t.Fatal(err)
+				}
 
-			// setup
-			if testScenario.setup != nil {
-				err := ts.Update(context.Background(), func(tx kv.Tx) error {
-					testScenario.setup(t, ts, tx)
-					return nil
-				})
+				hasher, err := authorization.NewAuthorizationHasher()
+				require.NoError(t, err)
 
+				ts, err := authorization.NewStore(context.Background(), store, useHashedTokens, authorization.WithAuthorizationHasher(hasher))
 				if err != nil {
 					t.Fatal(err)
 				}
-			}
 
-			// update
-			if testScenario.update != nil {
-				err := ts.Update(context.Background(), func(tx kv.Tx) error {
-					testScenario.update(t, ts, tx)
-					return nil
-				})
+				// setup
+				if testScenario.setup != nil {
+					err := ts.Update(context.Background(), func(tx kv.Tx) error {
+						testScenario.setup(t, ts, tx)
+						return nil
+					})
 
-				if err != nil {
-					t.Fatal(err)
+					if err != nil {
+						t.Fatal(err)
+					}
 				}
-			}
 
-			// results
-			if testScenario.results != nil {
-				err := ts.View(context.Background(), func(tx kv.Tx) error {
-					testScenario.results(t, ts, tx)
-					return nil
-				})
+				// update
+				if testScenario.update != nil {
+					err := ts.Update(context.Background(), func(tx kv.Tx) error {
+						testScenario.update(t, ts, tx)
+						return nil
+					})
 
-				if err != nil {
-					t.Fatal(err)
+					if err != nil {
+						t.Fatal(err)
+					}
 				}
-			}
-		})
+
+				// results
+				if testScenario.results != nil {
+					err := ts.View(context.Background(), func(tx kv.Tx) error {
+						testScenario.results(t, useHashedTokens, ts, hasher, tx)
+						return nil
+					})
+
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+			})
+		}
 	}
 }

@@ -12,6 +12,7 @@ func UnexpectedIndexError(err error) *errors.Error {
 		Code: errors.EInternal,
 		Msg:  fmt.Sprintf("unexpected error retrieving index; Err: %v", err),
 		Op:   "kv/index",
+		Err:  err,
 	}
 }
 
