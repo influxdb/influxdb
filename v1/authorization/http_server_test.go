@@ -304,7 +304,7 @@ func TestService_handleGetAuthorization(t *testing.T) {
 										},
 									},
 								},
-								HashedToken: "hello",
+								Token: "hello",
 							}, nil
 						}
 
@@ -461,7 +461,7 @@ func TestService_handleGetAuthorizations(t *testing.T) {
 						return []*influxdb.Authorization{
 							{
 								ID:          itesting.MustIDBase16("0d0a657820696e74"),
-								HashedToken: "hello",
+								Token:       "hello",
 								UserID:      itesting.MustIDBase16("2070616e656d2076"),
 								OrgID:       itesting.MustIDBase16("3070616e656d2076"),
 								Description: "t1",
@@ -469,7 +469,7 @@ func TestService_handleGetAuthorizations(t *testing.T) {
 							},
 							{
 								ID:          itesting.MustIDBase16("6669646573207375"),
-								HashedToken: "example",
+								Token:       "example",
 								UserID:      itesting.MustIDBase16("6c7574652c206f6e"),
 								OrgID:       itesting.MustIDBase16("9d70616e656d2076"),
 								Description: "t2",
@@ -553,7 +553,7 @@ func TestService_handleGetAuthorizations(t *testing.T) {
 						return []*influxdb.Authorization{
 							{
 								ID:          itesting.MustIDBase16("0d0a657820696e74"),
-								HashedToken: "hello",
+								Token:       "hello",
 								UserID:      itesting.MustIDBase16("2070616e656d2076"),
 								OrgID:       itesting.MustIDBase16("3070616e656d2076"),
 								Description: "t1",
@@ -561,7 +561,7 @@ func TestService_handleGetAuthorizations(t *testing.T) {
 							},
 							{
 								ID:          itesting.MustIDBase16("6669646573207375"),
-								HashedToken: "example",
+								Token:       "example",
 								UserID:      itesting.MustIDBase16("6c7574652c206f6e"),
 								OrgID:       itesting.MustIDBase16("9d70616e656d2076"),
 								Description: "t2",
@@ -629,7 +629,7 @@ func TestService_handleGetAuthorizations(t *testing.T) {
 						return []*influxdb.Authorization{
 							{
 								ID:          itesting.MustIDBase16("0d0a657820696e74"),
-								HashedToken: "hello",
+								Token:       "hello",
 								UserID:      itesting.MustIDBase16("2070616e656d2076"),
 								OrgID:       itesting.MustIDBase16("3070616e656d2076"),
 								Description: "t1",
@@ -637,7 +637,7 @@ func TestService_handleGetAuthorizations(t *testing.T) {
 							},
 							{
 								ID:          itesting.MustIDBase16("6669646573207375"),
-								HashedToken: "example",
+								Token:       "example",
 								UserID:      itesting.MustIDBase16("6c7574652c206f6e"),
 								OrgID:       itesting.MustIDBase16("9d70616e656d2076"),
 								Description: "t2",
@@ -928,7 +928,7 @@ func jsonDiffErr(s1, s2 string) (diff string, err error) {
 
 var authorizationCmpOptions = cmp.Options{
 	cmpopts.EquateEmpty(),
-	cmpopts.IgnoreFields(influxdb.Authorization{}, "ID", "Token", "HashedToken", "CreatedAt", "UpdatedAt"),
+	cmpopts.IgnoreFields(influxdb.Authorization{}, "ID", "Token", "CreatedAt", "UpdatedAt"),
 	cmp.Comparer(func(x, y []byte) bool {
 		return bytes.Equal(x, y)
 	}),

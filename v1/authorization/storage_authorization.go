@@ -27,27 +27,7 @@ func authIndexBucket(tx kv.Tx) (kv.Bucket, error) {
 	return b, nil
 }
 
-func hashedAuthIndexKey(n string) []byte {
-	return []byte(n)
-}
-
-func hashedAuthIndexBucket(tx kv.Tx) (kv.Bucket, error) {
-	b, err := tx.Bucket([]byte(hashedAuthIndex))
-	if err != nil {
-		return nil, UnexpectedAuthIndexError(err)
-	}
-
-	return b, nil
-}
-
 func encodeAuthorization(a *influxdb.Authorization) ([]byte, error) {
-	if len(a.Token) > 0 && len(a.HashedToken) > 0 {
-		return nil, &errors.Error{
-			Code: errors.EInvalid,
-			Msg:  "authorization can not contained Token and HashedToken",
-		}
-	}
-
 	switch a.Status {
 	case influxdb.Active, influxdb.Inactive:
 	case "":

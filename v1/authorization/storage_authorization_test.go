@@ -82,7 +82,6 @@ func TestAuth(t *testing.T) {
 			},
 		},
 		{
-			// VALIS: add tests for hashed tokens
 			name:  "read",
 			setup: setup,
 			results: func(t *testing.T, store *Store, tx kv.Tx) {

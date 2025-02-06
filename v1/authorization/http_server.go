@@ -133,7 +133,6 @@ func getAuthorizedUser(r *http.Request, ts TenantService) (*influxdb.User, error
 	return ts.FindUserByID(ctx, a.GetUserID())
 }
 
-// postAuthorizationRequest encapsulates HTTP client authentication parameters.
 type postAuthorizationRequest struct {
 	Token       string                `json:"token"`
 	Status      influxdb.Status       `json:"status"`
@@ -146,7 +145,6 @@ type postAuthorizationRequest struct {
 type authResponse struct {
 	ID          platform.ID          `json:"id"`
 	Token       string               `json:"token"`
-	HashedToken string               `json:"hashedToken"`
 	Status      influxdb.Status      `json:"status"`
 	Description string               `json:"description"`
 	OrgID       platform.ID          `json:"orgID"`
@@ -176,7 +174,6 @@ func (h *AuthHandler) newAuthResponse(ctx context.Context, a *influxdb.Authoriza
 	res := &authResponse{
 		ID:          a.ID,
 		Token:       a.Token,
-		HashedToken: a.HashedToken,
 		Status:      a.Status,
 		Description: a.Description,
 		OrgID:       a.OrgID,
@@ -212,7 +209,6 @@ func (a *authResponse) toInfluxdb() *influxdb.Authorization {
 	res := &influxdb.Authorization{
 		ID:          a.ID,
 		Token:       a.Token,
-		HashedToken: a.HashedToken,
 		Status:      a.Status,
 		Description: a.Description,
 		OrgID:       a.OrgID,
@@ -249,8 +245,7 @@ func newPostAuthorizationRequest(a *influxdb.Authorization) (*postAuthorizationR
 		Description: a.Description,
 		Permissions: a.Permissions,
 		Token:       a.Token,
-		//HashedToken: a.HashedToken,
-		Status: a.Status,
+		Status:      a.Status,
 	}
 
 	if a.UserID.Valid() {

@@ -14,9 +14,8 @@ const MaxIDGenerationN = 100
 const ReservedIDs = 1000
 
 var (
-	authBucket      = []byte("legacy/authorizationsv1")
-	authIndex       = []byte("legacy/authorizationindexv1")
-	hashedAuthIndex = []byte("legacy/authorizationhashedindexv1")
+	authBucket = []byte("legacy/authorizationsv1")
+	authIndex  = []byte("legacy/authorizationindexv1")
 )
 
 type Store struct {
