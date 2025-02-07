@@ -191,7 +191,7 @@ func BenchmarkStringDecoder_DecodeAll(b *testing.B) {
 		{1000, 10},
 	}
 	for _, bm := range benchmarks {
-		rand.Seed(int64(bm.n * 1e3))
+		rand.New(rand.NewSource(int64(bm.n * 1e3)))
 
 		s := NewStringEncoder(bm.n)
 		for c := 0; c < bm.n; c++ {

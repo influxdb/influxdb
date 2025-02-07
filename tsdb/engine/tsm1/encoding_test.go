@@ -1573,7 +1573,7 @@ func BenchmarkDecodeIntegerBlock(b *testing.B) {
 	}
 	for _, bm := range cases {
 		b.Run(fmt.Sprintf("%s_%d", bm.enc, bm.n), func(b *testing.B) {
-			rand.Seed(int64(bm.n * 1e3))
+			rand.New(rand.NewSource(int64(bm.n * 1e3)))
 
 			valueCount := bm.n
 			times := getTimes(valueCount, 60, time.Second)

@@ -190,7 +190,7 @@ func ExampleClient_write1000() {
 	}
 	defer c.Close()
 
-	rand.Seed(42)
+	rand.New(rand.NewSource(42))
 
 	bp, _ := client.NewBatchPoints(client.BatchPointsConfig{
 		Database:  "systemstats",

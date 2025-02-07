@@ -1090,7 +1090,7 @@ func BenchmarkTimeArrayDecodeAllUncompressed(b *testing.B) {
 	}
 
 	for _, size := range benchmarks {
-		rand.Seed(int64(size * 1e3))
+		rand.New(rand.NewSource(int64(size * 1e3)))
 
 		enc := NewTimeEncoder(size)
 		for i := 0; i < size; i++ {
@@ -1118,7 +1118,7 @@ func BenchmarkTimeArrayDecodeAllPackedSimple(b *testing.B) {
 		1000,
 	}
 	for _, size := range benchmarks {
-		rand.Seed(int64(size * 1e3))
+		rand.New(rand.NewSource(int64(size * 1e3)))
 
 		enc := NewTimeEncoder(size)
 		for i := 0; i < size; i++ {

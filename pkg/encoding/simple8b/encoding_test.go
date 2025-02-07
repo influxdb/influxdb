@@ -76,7 +76,7 @@ func combine(fns ...func() []uint64) func() []uint64 {
 // TestEncodeAll ensures 100% test coverage of simple8b.EncodeAll and
 // verifies all output by comparing the original input with the output of simple8b.DecodeAll
 func TestEncodeAll(t *testing.T) {
-	rand.Seed(0)
+	rand.New(rand.NewSource(0))
 
 	tests := []struct {
 		name string

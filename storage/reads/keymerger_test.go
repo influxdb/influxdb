@@ -146,7 +146,7 @@ func BenchmarkKeyMerger_MergeKeys(b *testing.B) {
 		bytes.Split([]byte("tag04,tag05"), commaB),
 	}
 
-	rand.Seed(20040409)
+	rand.New(rand.NewSource(20040409))
 
 	tests := []int{
 		10,
@@ -180,7 +180,7 @@ func BenchmarkKeyMerger_MergeTagKeys(b *testing.B) {
 		models.ParseTags([]byte("foo,tag04=v0,tag05=v0")),
 	}
 
-	rand.Seed(20040409)
+	rand.New(rand.NewSource(20040409))
 
 	tests := []int{
 		10,

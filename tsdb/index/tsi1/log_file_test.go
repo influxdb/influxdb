@@ -125,7 +125,7 @@ func TestLogFile_SeriesStoredInOrder(t *testing.T) {
 
 	// Generate and add test data
 	tvm := make(map[string]struct{})
-	rand.Seed(time.Now().Unix())
+	rand.New(rand.NewSource(time.Now().Unix()))
 	for i := 0; i < 100; i++ {
 		tv := fmt.Sprintf("server-%d", rand.Intn(50)) // Encourage adding duplicate series.
 		tvm[tv] = struct{}{}

@@ -50,7 +50,7 @@ func TestMain(m *testing.M) {
 	if seed == 0 {
 		seed = time.Now().UnixNano()
 	}
-	rand.Seed(seed)
+	rand.New(rand.NewSource(seed))
 
 	var r int
 	for _, indexType = range tsdb.RegisteredIndexes() {

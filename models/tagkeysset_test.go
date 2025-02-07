@@ -230,7 +230,7 @@ func BenchmarkTagKeysSet_UnionBytes(b *testing.B) {
 		bytes.Split([]byte("tag04,tag05"), commaB),
 	}
 
-	rand.Seed(20040409)
+	rand.New(rand.NewSource(20040409))
 
 	tests := []int{
 		10,

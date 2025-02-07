@@ -1102,7 +1102,7 @@ func BenchmarkIntegerArrayDecodeAllUncompressed(b *testing.B) {
 	}
 
 	for _, size := range benchmarks {
-		rand.Seed(int64(size * 1e3))
+		rand.New(rand.NewSource(int64(size * 1e3)))
 
 		enc := NewIntegerEncoder(size)
 		for i := 0; i < size; i++ {
@@ -1130,7 +1130,7 @@ func BenchmarkIntegerArrayDecodeAllPackedSimple(b *testing.B) {
 		1000,
 	}
 	for _, size := range benchmarks {
-		rand.Seed(int64(size * 1e3))
+		rand.New(rand.NewSource(int64(size * 1e3)))
 
 		enc := NewIntegerEncoder(size)
 		for i := 0; i < size; i++ {
@@ -1163,7 +1163,7 @@ func BenchmarkIntegerArrayDecodeAllRLE(b *testing.B) {
 		{1000, 0},
 	}
 	for _, bm := range benchmarks {
-		rand.Seed(int64(bm.n * 1e3))
+		rand.New(rand.NewSource(int64(bm.n * 1e3)))
 
 		enc := NewIntegerEncoder(bm.n)
 		acc := int64(0)

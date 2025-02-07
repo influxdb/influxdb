@@ -6,7 +6,7 @@ import (
 )
 
 // MakeSentence returns a string made up of n words.
-// MakeSentence uses rand.Int31n and therefore calling rand.Seed will produce
+// MakeSentence uses rand.Int31n and therefore calling rand.New(rand.NewSource) will produce
 // deterministic results.
 func MakeSentence(n int) string {
 	s := make([]string, n)

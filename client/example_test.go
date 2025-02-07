@@ -85,7 +85,7 @@ func ExampleClient_Write() {
 		pts        = make([]client.Point, sampleSize)
 	)
 
-	rand.Seed(42)
+	rand.New(rand.NewSource(42))
 	for i := 0; i < sampleSize; i++ {
 		pts[i] = client.Point{
 			Measurement: "shapes",
