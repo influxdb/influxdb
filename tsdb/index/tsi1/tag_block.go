@@ -492,7 +492,7 @@ func (t *TagBlockTrailer) WriteTo(w io.Writer) (n int64, err error) {
 	// Write total size & encoding version.
 	if err := writeUint64To(w, uint64(t.Size), &n); err != nil {
 		return n, err
-	} else if err := writeUint16To(w, IndexFileVersion, &n); err != nil {
+	} else if err := writeUint16To(w, TagBlockVersion, &n); err != nil {
 		return n, err
 	}
 
