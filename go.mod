@@ -64,7 +64,7 @@ require (
 	github.com/uber/jaeger-client-go v2.28.0+incompatible
 	github.com/xlab/treeprint v1.0.0
 	github.com/yudai/gojsondiff v1.0.0
-	go.etcd.io/bbolt v1.3.6
+	go.etcd.io/bbolt v1.3.9
 	go.uber.org/multierr v1.6.0
 	go.uber.org/zap v1.16.0
 	golang.org/x/crypto v0.24.0
