@@ -26,6 +26,7 @@ var passthroughConfigRules = map[string]string{
 	"data.cache-snapshot-memory-size":                      "storage-cache-snapshot-memory-size",
 	"data.cache-snapshot-write-cold-duration":              "storage-cache-snapshot-write-cold-duration",
 	"data.compact-full-write-cold-duration":                "storage-compact-full-write-cold-duration",
+	"data.compact-throughput":                              "storage-compact-throughput",
 	"data.compact-throughput-burst":                        "storage-compact-throughput-burst",
 	"data.max-concurrent-compactions":                      "storage-max-concurrent-compactions",
 	"data.max-index-log-file-size":                         "storage-max-index-log-file-size",

@@ -567,6 +567,11 @@ func (o *InfluxdOpts) BindCliOpts() []cli.Opt {
 			Desc:  "The duration at which the engine will compact all TSM files in a shard if it hasn't received a write or delete.",
 		},
 		{
+			DestP: &o.StorageConfig.Data.CompactThroughput,
+			Flag:  "storage-compact-throughput",
+			Desc:  "The rate limit in bytes per second that we will allow TSM compactions to write to disk. This option overwrites throughput-burst when throughput > throughput-burst",
+		},
+		{
 			DestP: &o.StorageConfig.Data.CompactThroughputBurst,
 			Flag:  "storage-compact-throughput-burst",
 			Desc:  "The rate limit in bytes per second that we will allow TSM compactions to write to disk.",
