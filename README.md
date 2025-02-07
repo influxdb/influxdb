@@ -2,7 +2,7 @@
 
 # ATTENTION:
 
-Around January 11th, 2019, `master` on this repository will become InfluxDB 2.0 code. The content of `infludata/platform` will be moved to this repository. If you rely on `master`, you should update your dependencies to track the `maxter-1.x` branch.
+Around January 11th, 2019, `master` on this repository will become InfluxDB 2.0 code. The content of `infludata/platform` will be moved to this repository. If you rely on `master`, you should update your dependencies to track the `master-1.x` branch.
 
 ## An Open-Source Time Series Database
 
