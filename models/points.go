@@ -501,7 +501,11 @@ func scanKey(buf []byte, i int) (int, []byte, error) {
 	// a buf of 'cpu,host=a,region=b,zone=c' would have indices slice of [4,11,20]
 	// which indicates that the first tag starts at buf[4], seconds at buf[11], and
 	// last at buf[20]
-	indices := make([]int, 100)
+	var indices []int
+	// tends holds the tag name ending position corresponding to indices. Like above
+	// example, indices is [4, 11, 20], tends will be [8, 17, 24], which locates
+	// first tag name as buf[4:8], seconds at buf[11:17], and last at [20, 24]
+	var tends []int
 
 	// tracks how many commas we've seen so we know how many values are indices.
 	// Since indices is an arbitrarily large slice,
@@ -516,7 +520,9 @@ func scanKey(buf []byte, i int) (int, []byte, error) {
 
 	// Optionally scan tags if needed.
 	if state == tagKeyState {
-		i, commas, indices, err = scanTags(buf, i, indices)
+		indices = make([]int, 100)
+		tends = make([]int, 100)
+		i, commas, indices, tends, err = scanTags(buf, i, indices, tends)
 		if err != nil {
 			return i, buf[start:i], err
 		}
@@ -527,8 +533,8 @@ func scanKey(buf []byte, i int) (int, []byte, error) {
 	// over the list comparing each tag in the sequence with each other.
 	for j := 0; j < commas-1; j++ {
 		// get the left and right tags
-		_, left := scanTo(buf[indices[j]:indices[j+1]-1], 0, '=')
-		_, right := scanTo(buf[indices[j+1]:indices[j+2]-1], 0, '=')
+		left := buf[indices[j]:tends[j]]
+		right := buf[indices[j+1]:tends[j+1]]
 
 		// If left is greater than right, the tags are not sorted. We do not have to
 		// continue because the short path no longer works.
@@ -553,7 +559,7 @@ func scanKey(buf []byte, i int) (int, []byte, error) {
 
 		// Sort the indices
 		indices := indices[:commas]
-		insertionSort(0, commas, buf, indices)
+		insertionSort(0, commas, buf, indices, tends)
 
 		// Create a new key using the measurement and sorted indices
 		b := make([]byte, len(buf[start:i]))
@@ -568,8 +574,8 @@ func scanKey(buf []byte, i int) (int, []byte, error) {
 		// Check again for duplicate tags now that the tags are sorted.
 		for j := 0; j < commas-1; j++ {
 			// get the left and right tags
-			_, left := scanTo(buf[indices[j]:], 0, '=')
-			_, right := scanTo(buf[indices[j+1]:], 0, '=')
+			left := buf[indices[j]:tends[j]]
+			right := buf[indices[j+1]:tends[j+1]]
 
 			// If the tags are equal, then there are duplicate tags, and we should abort.
 			// If the tags are not sorted, this pass may not find duplicate tags and we
@@ -631,7 +637,7 @@ func scanMeasurement(buf []byte, i int) (int, int, error) {
 // scanTags examines all the tags in a Point, keeping track of and
 // returning the updated indices slice, number of commas and location
 // in buf where to start examining the Point fields.
-func scanTags(buf []byte, i int, indices []int) (int, int, []int, error) {
+func scanTags(buf []byte, i int, indices []int, tends []int) (int, int, []int, []int, error) {
 	var (
 		err    error
 		commas int
@@ -646,12 +652,17 @@ func scanTags(buf []byte, i int, indices []int) (int, int, []int, error) {
 				newIndics := make([]int, cap(indices)*2)
 				copy(newIndics, indices)
 				indices = newIndics
+				newTends := make([]int, cap(tends)*2)
+				copy(newTends, tends)
+				tends = newTends
 			}
 			indices[commas] = i
-			commas++
 
 			i, err = scanTagsKey(buf, i)
 			state = tagValueState // tag value always follows a tag key
+			// i is start position of value, substract by 1 is end of tag
+			tends[commas] = i - 1
+			commas++
 		case tagValueState:
 			state, i, err = scanTagsValue(buf, i)
 		case fieldsState:
@@ -665,11 +676,12 @@ func scanTags(buf []byte, i int, indices []int) (int, int, []int, error) {
 				indices = newIndics
 			}
 			indices[commas] = i + 1
-			return i, commas, indices, nil
+			// NOTE: no need to update tends since no tag in this situation
+			return i, commas, indices, tends, nil
 		}
 
 		if err != nil {
-			return i, commas, indices, err
+			return i, commas, indices, tends, err
 		}
 	}
 }
@@ -740,18 +752,19 @@ func scanTagsValue(buf []byte, i int) (int, int, error) {
 	}
 }
 
-func insertionSort(l, r int, buf []byte, indices []int) {
+func insertionSort(l, r int, buf []byte, indices []int, tends []int) {
 	for i := l + 1; i < r; i++ {
-		for j := i; j > l && less(buf, indices, j, j-1); j-- {
+		for j := i; j > l && less(buf, indices, tends, j, j-1); j-- {
 			indices[j], indices[j-1] = indices[j-1], indices[j]
+			tends[j], tends[j-1] = tends[j-1], tends[j]
 		}
 	}
 }
 
-func less(buf []byte, indices []int, i, j int) bool {
+func less(buf []byte, indices []int, tends []int, i, j int) bool {
 	// This grabs the tag names for i & j, it ignores the values
-	_, a := scanTo(buf, indices[i], '=')
-	_, b := scanTo(buf, indices[j], '=')
+	a := buf[indices[i]:tends[i]]
+	b := buf[indices[j]:tends[j]]
 	return bytes.Compare(a, b) < 0
 }
 
