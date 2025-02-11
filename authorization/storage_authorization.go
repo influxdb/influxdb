@@ -135,6 +135,11 @@ func (s *Store) CreateAuthorization(ctx context.Context, tx kv.Tx, a *influxdb.A
 		a.ID = id
 	}
 
+	// Token must be unique to create authorization.
+	if err := s.uniqueAuthToken(ctx, tx, a); err != nil {
+		return err
+	}
+
 	return s.commitAuthorization(ctx, tx, a)
 }
 

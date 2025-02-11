@@ -3,7 +3,6 @@ package authorization_test
 import (
 	"context"
 	"fmt"
-	"reflect"
 	"testing"
 
 	"github.com/influxdata/influxdb/v2"
@@ -17,7 +16,30 @@ import (
 )
 
 func TestAuth(t *testing.T) {
-	setup := func(t *testing.T, store *authorization.Store, tx kv.Tx) {
+	checkIndexCounts := func(t *testing.T, tx kv.Tx, expAuthIndexCount, expHashedAuthIndexCount int) {
+		t.Helper()
+
+		const (
+			authIndexName       = "authorizationindexv1"
+			hashedAuthIndexName = "authorizationhashedindexv1"
+		)
+
+		indexCount := make(map[string]int)
+		for _, indexName := range []string{authIndexName, hashedAuthIndexName} {
+			index, err := tx.Bucket([]byte(indexName))
+			require.NoError(t, err)
+			cur, err := index.Cursor()
+			require.NoError(t, err)
+			for k, _ := cur.First(); k != nil; k, _ = cur.Next() {
+				indexCount[indexName]++
+			}
+		}
+
+		require.Equal(t, expAuthIndexCount, indexCount[authIndexName])
+		require.Equal(t, expHashedAuthIndexCount, indexCount[hashedAuthIndexName])
+	}
+
+	setup := func(t *testing.T, useHashedTokens bool, store *authorization.Store, hasher *authorization.AuthorizationHasher, tx kv.Tx) {
 		for i := 1; i <= 10; i++ {
 			err := store.CreateAuthorization(context.Background(), tx, &influxdb.Authorization{
 				ID:     platform.ID(i),
@@ -26,31 +48,57 @@ func TestAuth(t *testing.T) {
 				UserID: platform.ID(i),
 				Status: influxdb.Active,
 			})
+			require.NoError(t, err)
+		}
 
-			if err != nil {
-				t.Fatal(err)
+		// Perform sanity checks on Token vs HashedToken and indices.
+		for i := 1; i <= 10; i++ {
+			expToken := fmt.Sprintf("randomtoken%d", i)
+			a, err := store.GetAuthorizationByToken(context.Background(), tx, expToken)
+			require.NoError(t, err)
+			if useHashedTokens {
+				require.Empty(t, a.Token)
+				hashedToken, err := hasher.Hash(expToken)
+				require.NoError(t, err)
+				require.Equal(t, hashedToken, a.HashedToken)
+			} else {
+				require.Equal(t, expToken, a.Token)
+				require.Empty(t, a.HashedToken)
 			}
 		}
+
+		var expAuthIndexCount, expHashedAuthIndexCount int
+		if useHashedTokens {
+			expHashedAuthIndexCount = 10
+		} else {
+			expAuthIndexCount = 10
+		}
+		checkIndexCounts(t, tx, expAuthIndexCount, expHashedAuthIndexCount)
 	}
 
 	tt := []struct {
 		name    string
-		setup   func(*testing.T, *authorization.Store, kv.Tx)
+		setup   func(*testing.T, bool, *authorization.Store, *authorization.AuthorizationHasher, kv.Tx)
 		update  func(*testing.T, *authorization.Store, kv.Tx)
 		results func(*testing.T, bool, *authorization.Store, *authorization.AuthorizationHasher, kv.Tx)
 	}{
 		{
-			name:  "create",
+			name:  "create duplicate token",
 			setup: setup,
+			update: func(t *testing.T, store *authorization.Store, tx kv.Tx) {
+				// should not be able to create two authorizations with identical tokens
+				err := store.CreateAuthorization(context.Background(), tx, &influxdb.Authorization{
+					ID:     platform.ID(1),
+					Token:  fmt.Sprintf("randomtoken%d", 1),
+					OrgID:  platform.ID(1),
+					UserID: platform.ID(1),
+				})
+				require.ErrorIs(t, err, influxdb.ErrUnableToCreateToken)
+			},
 			results: func(t *testing.T, useHashedTokens bool, store *authorization.Store, hasher *authorization.AuthorizationHasher, tx kv.Tx) {
 				auths, err := store.ListAuthorizations(context.Background(), tx, influxdb.AuthorizationFilter{})
-				if err != nil {
-					t.Fatal(err)
-				}
-
-				if len(auths) != 10 {
-					t.Fatalf("expected 10 authorizations, got: %d", len(auths))
-				}
+				require.NoError(t, err)
+				require.Len(t, auths, 10)
 
 				expected := []*influxdb.Authorization{}
 				for i := 1; i <= 10; i++ {
@@ -69,20 +117,15 @@ func TestAuth(t *testing.T) {
 					}
 					expected = append(expected, a)
 				}
-				if !reflect.DeepEqual(auths, expected) {
-					t.Fatalf("expected identical authorizations: \n%+v\n%+v", auths, expected)
-				}
+				require.Equal(t, auths, expected)
 
-				// should not be able to create two authorizations with identical tokens
-				err = store.CreateAuthorization(context.Background(), tx, &influxdb.Authorization{
-					ID:     platform.ID(1),
-					Token:  fmt.Sprintf("randomtoken%d", 1),
-					OrgID:  platform.ID(1),
-					UserID: platform.ID(1),
-				})
-				if err == nil {
-					t.Fatalf("expected to be unable to create authorizations with identical tokens")
+				var expAuthIndexCount, expHashedAuthIndexCount int
+				if useHashedTokens {
+					expHashedAuthIndexCount = 10
+				} else {
+					expAuthIndexCount = 10
 				}
+				checkIndexCounts(t, tx, expAuthIndexCount, expHashedAuthIndexCount)
 			},
 		},
 		{
@@ -105,24 +148,21 @@ func TestAuth(t *testing.T) {
 					}
 
 					authByID, err := store.GetAuthorizationByID(context.Background(), tx, platform.ID(i))
-					if err != nil {
-						t.Fatalf("Unexpectedly could not acquire Authorization by ID [Error]: %v", err)
-					}
-
-					if !reflect.DeepEqual(authByID, expectedAuth) {
-						t.Fatalf("ID TEST: expected identical authorizations:\n[Expected]: %+#v\n[Got]: %+#v", expectedAuth, authByID)
-					}
+					require.NoError(t, err)
+					require.Equal(t, expectedAuth, authByID)
 
 					authByToken, err := store.GetAuthorizationByToken(context.Background(), tx, fmt.Sprintf("randomtoken%d", i))
-					if err != nil {
-						t.Fatalf("cannot get authorization by Token [Error]: %v", err)
-					}
-
-					if !reflect.DeepEqual(authByToken, expectedAuth) {
-						t.Fatalf("TOKEN TEST: expected identical authorizations:\n[Expected]: %+#v\n[Got]: %+#v", expectedAuth, authByToken)
-					}
+					require.NoError(t, err)
+					require.Equal(t, expectedAuth, authByToken)
 				}
 
+				var expAuthIndexCount, expHashedAuthIndexCount int
+				if useHashedTokens {
+					expHashedAuthIndexCount = 10
+				} else {
+					expAuthIndexCount = 10
+				}
+				checkIndexCounts(t, tx, expAuthIndexCount, expHashedAuthIndexCount)
 			},
 		},
 		{
@@ -131,25 +171,22 @@ func TestAuth(t *testing.T) {
 			update: func(t *testing.T, store *authorization.Store, tx kv.Tx) {
 				for i := 1; i <= 10; i++ {
 					auth, err := store.GetAuthorizationByID(context.Background(), tx, platform.ID(i))
-					if err != nil {
-						t.Fatalf("Could not get authorization [Error]: %v", err)
-					}
+					require.NoError(t, err)
 
 					auth.Status = influxdb.Inactive
+					copyAuth := *auth
 
-					_, err = store.UpdateAuthorization(context.Background(), tx, platform.ID(i), auth)
-					if err != nil {
-						t.Fatalf("Could not get updated authorization [Error]: %v", err)
-					}
+					updatedAuth, err := store.UpdateAuthorization(context.Background(), tx, platform.ID(i), auth)
+					require.NoError(t, err)
+					require.Equal(t, auth, updatedAuth) /* should be the same pointer */
+					require.Equal(t, copyAuth, *auth)   /* should be the same contents */
 				}
 			},
 			results: func(t *testing.T, useHashedTokens bool, store *authorization.Store, hasher *authorization.AuthorizationHasher, tx kv.Tx) {
 
 				for i := 1; i <= 10; i++ {
 					auth, err := store.GetAuthorizationByID(context.Background(), tx, platform.ID(i))
-					if err != nil {
-						t.Fatalf("Could not get authorization [Error]: %v", err)
-					}
+					require.NoError(t, err)
 
 					expectedAuth := &influxdb.Authorization{
 						ID:     platform.ID(i),
@@ -165,10 +202,15 @@ func TestAuth(t *testing.T) {
 						expectedAuth.Token = ""
 					}
 
-					if !reflect.DeepEqual(auth, expectedAuth) {
-						t.Fatalf("expected identical authorizations:\n[Expected] %+#v\n[Got] %+#v", expectedAuth, auth)
-					}
+					require.Equal(t, expectedAuth, auth)
 				}
+				var expAuthIndexCount, expHashedAuthIndexCount int
+				if useHashedTokens {
+					expHashedAuthIndexCount = 10
+				} else {
+					expAuthIndexCount = 10
+				}
+				checkIndexCounts(t, tx, expAuthIndexCount, expHashedAuthIndexCount)
 			},
 		},
 		{
@@ -177,18 +219,16 @@ func TestAuth(t *testing.T) {
 			update: func(t *testing.T, store *authorization.Store, tx kv.Tx) {
 				for i := 1; i <= 10; i++ {
 					err := store.DeleteAuthorization(context.Background(), tx, platform.ID(i))
-					if err != nil {
-						t.Fatalf("Could not delete authorization [Error]: %v", err)
-					}
+					require.NoError(t, err)
 				}
 			},
 			results: func(t *testing.T, useHashedTokens bool, store *authorization.Store, hasher *authorization.AuthorizationHasher, tx kv.Tx) {
 				for i := 1; i <= 10; i++ {
-					_, err := store.GetAuthorizationByID(context.Background(), tx, platform.ID(i))
-					if err == nil {
-						t.Fatal("Authorization was not deleted correctly")
-					}
+					a, err := store.GetAuthorizationByID(context.Background(), tx, platform.ID(i))
+					require.ErrorIs(t, err, authorization.ErrAuthNotFound)
+					require.Nil(t, a)
 				}
+				checkIndexCounts(t, tx, 0, 0)
 			},
 		},
 	}
@@ -198,28 +238,24 @@ func TestAuth(t *testing.T) {
 
 			t.Run(testScenario.name, func(t *testing.T) {
 				store := inmem.NewKVStore()
-				if err := all.Up(context.Background(), zaptest.NewLogger(t), store); err != nil {
-					t.Fatal(err)
-				}
+				err := all.Up(context.Background(), zaptest.NewLogger(t), store)
+				require.NoError(t, err)
 
 				hasher, err := authorization.NewAuthorizationHasher()
 				require.NoError(t, err)
+				require.NotNil(t, hasher)
 
 				ts, err := authorization.NewStore(context.Background(), store, useHashedTokens, authorization.WithAuthorizationHasher(hasher))
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
+				require.NotNil(t, ts)
 
 				// setup
 				if testScenario.setup != nil {
 					err := ts.Update(context.Background(), func(tx kv.Tx) error {
-						testScenario.setup(t, ts, tx)
+						testScenario.setup(t, useHashedTokens, ts, hasher, tx)
 						return nil
 					})
-
-					if err != nil {
-						t.Fatal(err)
-					}
+					require.NoError(t, err)
 				}
 
 				// update
@@ -228,10 +264,7 @@ func TestAuth(t *testing.T) {
 						testScenario.update(t, ts, tx)
 						return nil
 					})
-
-					if err != nil {
-						t.Fatal(err)
-					}
+					require.NoError(t, err)
 				}
 
 				// results
@@ -240,10 +273,7 @@ func TestAuth(t *testing.T) {
 						testScenario.results(t, useHashedTokens, ts, hasher, tx)
 						return nil
 					})
-
-					if err != nil {
-						t.Fatal(err)
-					}
+					require.NoError(t, err)
 				}
 			})
 		}
