@@ -1,4 +1,5 @@
 #!/bin/sh -e
+# shellcheck disable=SC2059
 
 readonly GREEN='\033[0;32m'
 readonly BOLD='\033[1m'
@@ -64,7 +65,7 @@ elif [ "${OS}" = "Darwin" ]; then
 fi
 
 # Exit if unsupported system
-[ -n "${ARTIFACT}" ] || { 
+[ -n "${ARTIFACT}" ] || {
     printf "Unfortunately this script doesn't support your '${OS}' | '${ARCHITECTURE}' setup, or was unable to identify it correctly.\n"
     printf "Visit our public Discord at \033[4;94mhttps://discord.gg/az4jPm8x${NC} for additional guidance.\n"
     printf "View alternative binaries on our Getting Started guide at \033[4;94mhttps://docs.influxdata.com/influxdb3/${EDITION_TAG}/${NC}.\n"
@@ -331,7 +332,7 @@ if [ "${EDITION}" = "Core" ]; then
         printf "├─${DIM} Node ID: %s${NC}\n" "$NODE_ID"
         printf "├─${DIM} Storage: %s${NC}\n" "$STORAGE_TYPE"
         printf "├─${DIM} '%s' serve --node-id='%s' --http-bind='0.0.0.0:%s' %s${NC}\n" "$INSTALL_LOC/$BINARY_NAME" "$NODE_ID" "$PORT" "$STORAGE_FLAGS_ECHO"
-        "$INSTALL_LOC/$BINARY_NAME" serve --node-id="$NODE_ID" --http-bind="0.0.0.0:$PORT" $STORAGE_FLAGS > /dev/null &
+        "$INSTALL_LOC/$BINARY_NAME" serve --node-id="$NODE_ID" --http-bind="0.0.0.0:$PORT" "$STORAGE_FLAGS" > /dev/null &
         PID="$!"
 
         SUCCESS=0
