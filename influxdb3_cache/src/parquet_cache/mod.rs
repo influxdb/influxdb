@@ -1,20 +1,14 @@
 //! An in-memory cache of Parquet files that are persisted to object storage
 use std::{
-    collections::BinaryHeap,
     fmt::Debug,
     ops::Range,
-    sync::{
-        atomic::{AtomicI64, AtomicUsize, Ordering},
-        Arc,
-    },
+    sync::{atomic::AtomicI64, Arc},
     time::Duration,
 };
 
-use anyhow::bail;
 use async_trait::async_trait;
 use bytes::Bytes;
 use chrono::{DateTime, Utc};
-use dashmap::{DashMap, Entry};
 use data_types::{TimestampMinMax, TimestampRange};
 use futures::{
     future::{BoxFuture, Shared},
@@ -23,7 +17,6 @@ use futures::{
 };
 use iox_time::TimeProvider;
 use metric::Registry;
-use metrics::{AccessMetrics, SizeMetrics};
 use object_store::{
     path::Path, Error, GetOptions, GetResult, GetResultPayload, ListResult, MultipartUpload,
     ObjectMeta, ObjectStore, PutMultipartOpts, PutOptions, PutPayload, PutResult,
@@ -34,6 +27,10 @@ use tokio::sync::{
     oneshot, watch,
 };
 
+use crate::parquet_cache::data_store::{sharded_map_cache::Cache, CacheProvider};
+
+mod data_store;
+mod experimental;
 mod metrics;
 
 /// Shared future type for cache values that are being fetched
@@ -183,15 +180,15 @@ impl MemCacheOracle {
     /// This spawns two background tasks:
     /// * one to handle registered [`CacheRequest`]s
     /// * one to prune deleted and un-needed cache entries on an interval
-    fn new(mem_cached_store: Arc<MemCachedObjectStore>, prune_interval: Duration) -> Self {
+    fn new(mem_cached_store: Arc<MemCachedObjectStore>, _prune_interval: Duration) -> Self {
         let (cache_request_tx, cache_request_rx) = channel(CACHE_REQUEST_BUFFER_SIZE);
         background_cache_request_handler(Arc::clone(&mem_cached_store), cache_request_rx);
         let (prune_notifier_tx, _prune_notifier_rx) = watch::channel(0);
-        background_cache_pruner(
-            Arc::clone(&mem_cached_store),
-            prune_notifier_tx.clone(),
-            prune_interval,
-        );
+        // background_cache_pruner(
+        //     Arc::clone(&mem_cached_store),
+        //     prune_notifier_tx.clone(),
+        //     prune_interval,
+        // );
         Self {
             cache_request_tx,
             prune_notifier_tx,
@@ -259,14 +256,17 @@ pub fn create_cached_obj_store_and_oracle(
     prune_percent: f64,
     prune_interval: Duration,
 ) -> (Arc<dyn ObjectStore>, Arc<dyn ParquetCacheOracle>) {
-    let store = Arc::new(MemCachedObjectStore::new(MemCachedObjectStoreArgs {
-        time_provider,
-        metric_registry,
-        inner: object_store,
-        memory_capacity: cache_capacity,
-        prune_percent,
-        query_cache_duration,
-    }));
+    let store = Arc::new(MemCachedObjectStore::new_with_linked_map(
+        MemCachedObjectStoreArgs {
+            // let store = Arc::new(MemCachedObjectStore::new(MemCachedObjectStoreArgs {
+            time_provider,
+            metric_registry,
+            inner: object_store,
+            memory_capacity: cache_capacity,
+            prune_percent,
+            query_cache_duration,
+        },
+    ));
     let oracle = Arc::new(MemCacheOracle::new(Arc::clone(&store), prune_interval));
     (store, oracle)
 }
@@ -286,6 +286,54 @@ pub fn test_cached_obj_store_and_oracle(
         0.1,
         Duration::from_millis(10),
     )
+}
+
+/// Create a test cached object store with concrete types
+pub fn test_cached_obj_store_and_oracle_with_size(
+    object_store: Arc<dyn ObjectStore>,
+    time_provider: Arc<dyn TimeProvider>,
+    metric_registry: Arc<Registry>,
+    cache_capacity: usize,
+) -> (Arc<MemCachedObjectStore>, Arc<MemCacheOracle>) {
+    let store = Arc::new(MemCachedObjectStore::new(MemCachedObjectStoreArgs {
+        time_provider,
+        metric_registry,
+        inner: object_store,
+        memory_capacity: cache_capacity,
+        prune_percent: 0.1, // prune 10%
+        query_cache_duration: Duration::from_secs(86_400 * 3),
+    }));
+    // let oracle = Arc::new(MemCacheOracle::new(Arc::clone(&store), Duration::from_secs(1)));
+    let oracle = Arc::new(MemCacheOracle::new(
+        Arc::clone(&store),
+        Duration::from_millis(1),
+    ));
+    (store, oracle)
+}
+
+/// Create a test cached object store with concrete types / linked map
+pub fn test_cached_obj_store_and_oracle_with_size_linked_map(
+    object_store: Arc<dyn ObjectStore>,
+    time_provider: Arc<dyn TimeProvider>,
+    metric_registry: Arc<Registry>,
+    cache_capacity: usize,
+) -> (Arc<MemCachedObjectStore>, Arc<MemCacheOracle>) {
+    let store = Arc::new(MemCachedObjectStore::new_with_linked_map(
+        MemCachedObjectStoreArgs {
+            time_provider,
+            metric_registry,
+            inner: object_store,
+            memory_capacity: cache_capacity,
+            prune_percent: 0.1, // prune 10%
+            query_cache_duration: Duration::from_secs(86_400 * 3),
+        },
+    ));
+    // let oracle = Arc::new(MemCacheOracle::new(Arc::clone(&store), Duration::from_secs(1)));
+    let oracle = Arc::new(MemCacheOracle::new(
+        Arc::clone(&store),
+        Duration::from_millis(1),
+    ));
+    (store, oracle)
 }
 
 /// A value in the cache, containing the actual bytes as well as object store metadata
@@ -383,199 +431,6 @@ impl CacheEntryState {
     }
 }
 
-/// A cache for storing objects from object storage by their [`Path`]
-///
-/// This acts as a Least-Recently-Used (LRU) cache that allows for concurrent reads and writes. See
-/// the [`Cache::prune`] method for implementation of how the cache entries are pruned. Pruning must
-/// be invoked externally, e.g., on an interval.
-#[derive(Debug)]
-struct Cache {
-    /// The maximum amount of memory this cache should occupy in bytes
-    capacity: usize,
-    /// The current amount of memory being used by the cache in bytes
-    used: AtomicUsize,
-    /// What percentage of the total number of cache entries will be pruned during a pruning operation
-    prune_percent: f64,
-    /// The map storing cache entries
-    map: DashMap<Path, CacheEntry>,
-    /// Provides timestamps for updating the hit time of each cache entry
-    time_provider: Arc<dyn TimeProvider>,
-    /// Track metrics for observing accesses to the cache
-    access_metrics: AccessMetrics,
-    /// Track metrics for observing the size of the cache
-    size_metrics: SizeMetrics,
-    query_cache_duration: Duration,
-}
-
-impl Cache {
-    /// Create a new cache with a given capacity and prune percent
-    fn new(
-        capacity: usize,
-        prune_percent: f64,
-        time_provider: Arc<dyn TimeProvider>,
-        metric_registry: Arc<Registry>,
-        query_cache_duration: Duration,
-    ) -> Self {
-        Self {
-            capacity,
-            used: AtomicUsize::new(0),
-            prune_percent,
-            map: DashMap::new(),
-            time_provider,
-            access_metrics: AccessMetrics::new(&metric_registry),
-            size_metrics: SizeMetrics::new(&metric_registry),
-            query_cache_duration,
-        }
-    }
-
-    /// Get an entry in the cache or `None` if there is not an entry
-    ///
-    /// This updates the hit time of the entry and returns a cloned copy of the entry state so that
-    /// the reference into the map is dropped
-    fn get(&self, path: &Path) -> Option<CacheEntryState> {
-        let Some(entry) = self.map.get(path) else {
-            self.access_metrics.record_cache_miss();
-            return None;
-        };
-        if entry.is_success() {
-            self.access_metrics.record_cache_hit();
-            entry
-                .hit_time
-                .store(self.time_provider.now().timestamp_nanos(), Ordering::SeqCst);
-        } else if entry.is_fetching() {
-            self.access_metrics.record_cache_miss_while_fetching();
-        }
-        Some(entry.state.clone())
-    }
-
-    /// Check if an entry in the cache is in process of being fetched or if it was already fetched
-    /// successfully
-    ///
-    /// This does not update the hit time of the entry
-    fn path_already_fetched(&self, path: &Path) -> bool {
-        self.map.get(path).is_some()
-    }
-
-    /// Insert a `Fetching` entry to the cache along with the shared future for polling the value
-    /// being fetched
-    fn set_fetching(&self, path: &Path, fut: SharedCacheValueFuture) {
-        let entry = CacheEntry {
-            state: CacheEntryState::Fetching(fut),
-            hit_time: AtomicI64::new(self.time_provider.now().timestamp_nanos()),
-        };
-        let additional = entry.size();
-        self.size_metrics
-            .record_file_additions(additional as u64, 1);
-        self.map.insert(path.clone(), entry);
-        self.used.fetch_add(additional, Ordering::SeqCst);
-    }
-
-    /// When parquet bytes are in hand this method can be used to update the cache value
-    /// directly without going through Fetching -> Success lifecycle
-    fn set_cache_value_directly(&self, path: &Path, cache_value: Arc<CacheValue>) {
-        let entry = CacheEntry {
-            state: CacheEntryState::Success(cache_value),
-            hit_time: AtomicI64::new(self.time_provider.now().timestamp_nanos()),
-        };
-        let additional = entry.size();
-        self.size_metrics
-            .record_file_additions(additional as u64, 1);
-        self.map.insert(path.clone(), entry);
-        self.used.fetch_add(additional, Ordering::SeqCst);
-    }
-
-    /// Update a `Fetching` entry to a `Success` entry in the cache
-    fn set_success(&self, path: &Path, value: Arc<CacheValue>) -> Result<(), anyhow::Error> {
-        match self.map.entry(path.clone()) {
-            Entry::Occupied(mut o) => {
-                let entry = o.get_mut();
-                if !entry.is_fetching() {
-                    // NOTE(trevor): the only other state is Success, so bailing here just
-                    // means that we leave the entry alone, and since objects in the store are
-                    // treated as immutable, this should be okay.
-                    bail!("attempted to store value in non-fetching cache entry");
-                }
-                let current_size = entry.size();
-                entry.state = CacheEntryState::Success(value);
-                entry
-                    .hit_time
-                    .store(self.time_provider.now().timestamp_nanos(), Ordering::SeqCst);
-                // TODO(trevor): what if size is greater than cache capacity?
-                let additional_bytes = entry.size() - current_size;
-                self.size_metrics
-                    .record_file_additions(additional_bytes as u64, 0);
-                self.used.fetch_add(additional_bytes, Ordering::SeqCst);
-                Ok(())
-            }
-            Entry::Vacant(_) => bail!("attempted to set success state on an empty cache entry"),
-        }
-    }
-
-    /// Remove an entry from the cache, as well as its associated size from the used capacity
-    fn remove(&self, path: &Path) {
-        let Some((_, entry)) = self.map.remove(path) else {
-            return;
-        };
-        let removed_bytes = entry.size();
-        self.size_metrics
-            .record_file_deletions(removed_bytes as u64, 1);
-        self.used.fetch_sub(removed_bytes, Ordering::SeqCst);
-    }
-
-    /// Prune least recently hit entries from the cache
-    ///
-    /// This is a no-op if the `used` amount on the cache is not >= its `capacity`
-    fn prune(&self) -> Option<usize> {
-        let used = self.used.load(Ordering::SeqCst);
-        let n_to_prune = (self.map.len() as f64 * self.prune_percent).floor() as usize;
-        if used < self.capacity || n_to_prune == 0 {
-            return None;
-        }
-        // use a BinaryHeap to determine the cut-off time, at which, entries that were
-        // last hit before that time will be pruned:
-        let mut prune_heap = BinaryHeap::with_capacity(n_to_prune);
-
-        for map_ref in self.map.iter() {
-            let hit_time = map_ref.value().hit_time.load(Ordering::SeqCst);
-            let size = map_ref.value().size();
-            let path = map_ref.key().as_ref();
-            if prune_heap.len() < n_to_prune {
-                // if the heap isn't full yet, throw this item on:
-                prune_heap.push(PruneHeapItem {
-                    hit_time,
-                    path_ref: path.into(),
-                    size,
-                });
-            } else if hit_time < prune_heap.peek().map(|item| item.hit_time).unwrap() {
-                // otherwise, the heap is at its capacity, so only push if the hit_time
-                // in question is older than the top of the heap (after pop'ing the top
-                // of the heap to make room)
-                prune_heap.pop();
-                prune_heap.push(PruneHeapItem {
-                    path_ref: path.into(),
-                    hit_time,
-                    size,
-                });
-            }
-        }
-
-        // track the total size of entries that get freed:
-        let mut freed = 0;
-        let n_files = prune_heap.len() as u64;
-        // drop entries with hit times before the cut-off:
-        for item in prune_heap {
-            self.map.remove(&Path::from(item.path_ref.as_ref()));
-            freed += item.size;
-        }
-        self.size_metrics
-            .record_file_deletions(freed as u64, n_files);
-        // update used mem size with freed amount:
-        self.used.fetch_sub(freed, Ordering::SeqCst);
-
-        Some(freed)
-    }
-}
-
 /// An item that stores what is needed for pruning [`CacheEntry`]s
 #[derive(Debug, Eq)]
 struct PruneHeapItem {
@@ -613,7 +468,7 @@ const STORE_NAME: &str = "mem_cached_object_store";
 pub struct MemCachedObjectStore {
     /// An inner object store for which items will be cached
     inner: Arc<dyn ObjectStore>,
-    cache: Arc<Cache>,
+    cache: Arc<dyn CacheProvider>,
 }
 
 #[derive(Debug)]
@@ -641,6 +496,29 @@ impl MemCachedObjectStore {
         Self {
             inner,
             cache: Arc::new(Cache::new(
+                memory_capacity,
+                prune_percent,
+                Arc::clone(&time_provider),
+                metric_registry,
+                query_cache_duration,
+            )),
+        }
+    }
+
+    /// new with linked map
+    fn new_with_linked_map(
+        MemCachedObjectStoreArgs {
+            time_provider,
+            metric_registry,
+            inner,
+            memory_capacity,
+            prune_percent,
+            query_cache_duration,
+        }: MemCachedObjectStoreArgs,
+    ) -> Self {
+        Self {
+            inner,
+            cache: Arc::new(data_store::safe_linked_map_cache::Cache::new(
                 memory_capacity,
                 prune_percent,
                 Arc::clone(&time_provider),
@@ -894,7 +772,7 @@ fn background_cache_request_handler(
 
 fn should_request_be_cached(
     file_timestamp_min_max: Option<TimestampMinMax>,
-    cache: &Cache,
+    cache: &Arc<dyn CacheProvider>,
 ) -> bool {
     // If there's a timestamp range, check if there's capacity to add these
     // files. These are currently expected to come through from query path
@@ -902,9 +780,10 @@ fn should_request_be_cached(
     // before adding to cache
     file_timestamp_min_max
         .map(|file_timestamp_min_max| {
-            if cache.used.load(Ordering::SeqCst) < cache.capacity {
-                let end = cache.time_provider.now();
-                let start = end - cache.query_cache_duration;
+            if cache.get_used() < cache.get_capacity() {
+                // TODO pass time_provider
+                let end = cache.get_time_provider().now();
+                let start = end - cache.get_query_cache_duration();
                 let allowed_time_range =
                     TimestampRange::new(start.timestamp_nanos(), end.timestamp_nanos());
                 debug!(
@@ -922,18 +801,20 @@ fn should_request_be_cached(
 }
 
 /// A background task for pruning un-needed entries in the cache
+#[allow(dead_code)]
 fn background_cache_pruner(
     mem_store: Arc<MemCachedObjectStore>,
     prune_notifier_tx: watch::Sender<usize>,
     interval_duration: Duration,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        debug!(">>> test: background cache pruning running");
+        debug!(">>> background cache pruning running");
         let mut interval = tokio::time::interval(interval_duration);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             interval.tick().await;
             if let Some(freed) = mem_store.cache.prune() {
+                debug!(freed, ">>> number of bytes freed in prune cycle");
                 let _ = prune_notifier_tx.send(freed);
             }
         }
@@ -959,6 +840,7 @@ pub(crate) mod tests {
 
     use crate::parquet_cache::{
         create_cached_obj_store_and_oracle,
+        data_store::CacheProvider,
         metrics::{CACHE_ACCESS_NAME, CACHE_SIZE_BYTES_NAME, CACHE_SIZE_N_FILES_NAME},
         should_request_be_cached, test_cached_obj_store_and_oracle, Cache, CacheRequest,
         ParquetFileDataToCache,
@@ -1185,12 +1067,12 @@ pub(crate) mod tests {
         );
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    #[test_log::test(tokio::test(flavor = "multi_thread", worker_threads = 1))]
     async fn cache_evicts_lru_when_full() {
         let inner_store = Arc::new(RequestCountedObjectStore::new(Arc::new(InMemory::new())));
         let time_provider = Arc::new(MockProvider::new(Time::from_timestamp_nanos(0)));
         // these are magic numbers that will make it so the third entry exceeds the cache capacity:
-        let cache_capacity_bytes = 60;
+        let cache_capacity_bytes = 20;
         let cache_prune_percent = 0.4;
         let cache_prune_interval = Duration::from_millis(10);
         let (cached_store, oracle) = create_cached_obj_store_and_oracle(
@@ -1202,7 +1084,6 @@ pub(crate) mod tests {
             cache_prune_percent,
             cache_prune_interval,
         );
-        let mut prune_notifier = oracle.prune_notifier();
         // PUT an entry into the store:
         let path_1 = Path::from("0.parquet");
         let payload_1 = b"Janeway";
@@ -1219,9 +1100,6 @@ pub(crate) mod tests {
         // there will have been one get request made by the cache oracle:
         assert_eq!(1, inner_store.total_read_request_count(&path_1));
 
-        // update time:
-        time_provider.set(Time::from_timestamp_nanos(1));
-
         // GET the entry to check its there and was retrieved from cache, i.e., that the request
         // counts do not change:
         assert_payload_at_equals!(cached_store, payload_1, path_1);
@@ -1235,9 +1113,6 @@ pub(crate) mod tests {
             .await
             .unwrap();
 
-        // update time:
-        time_provider.set(Time::from_timestamp_nanos(2));
-
         // cache the second entry and wait for it to complete, this will not evict the first entry
         // as both can fit in the cache:
         let (cache_request, notifier_rx) =
@@ -1248,17 +1123,11 @@ pub(crate) mod tests {
         assert_eq!(1, inner_store.total_read_request_count(&path_1));
         assert_eq!(1, inner_store.total_read_request_count(&path_2));
 
-        // update time:
-        time_provider.set(Time::from_timestamp_nanos(3));
-
         // GET the second entry and assert that it was retrieved from the cache, i.e., that the
         // request counts do not change:
         assert_payload_at_equals!(cached_store, payload_2, path_2);
         assert_eq!(1, inner_store.total_read_request_count(&path_1));
         assert_eq!(1, inner_store.total_read_request_count(&path_2));
-
-        // update time:
-        time_provider.set(Time::from_timestamp_nanos(4));
 
         // GET the first entry again and assert that it was retrieved from the cache as before. This
         // will also update the hit count so that the first entry (janeway) was used more recently
@@ -1267,6 +1136,8 @@ pub(crate) mod tests {
         assert_eq!(1, inner_store.total_read_request_count(&path_1));
         assert_eq!(1, inner_store.total_read_request_count(&path_2));
 
+        // before adding this, access path_2
+
         // PUT a third entry into the store:
         let path_3 = Path::from("2.parquet");
         let payload_3 = b"Neelix";
@@ -1274,9 +1145,6 @@ pub(crate) mod tests {
             .put(&path_3, PutPayload::from_static(payload_3))
             .await
             .unwrap();
-
-        // update time:
-        time_provider.set(Time::from_timestamp_nanos(5));
 
         // cache the third entry and wait for it to complete, this will push the cache past its
         // capacity:
@@ -1289,17 +1157,14 @@ pub(crate) mod tests {
         assert_eq!(1, inner_store.total_read_request_count(&path_2));
         assert_eq!(1, inner_store.total_read_request_count(&path_3));
 
-        // update time:
-        time_provider.set(Time::from_timestamp_nanos(6));
-
         // GET the new entry from the strore, and check that it was served by the cache:
         assert_payload_at_equals!(cached_store, payload_3, path_3);
         assert_eq!(1, inner_store.total_read_request_count(&path_1));
         assert_eq!(1, inner_store.total_read_request_count(&path_2));
         assert_eq!(1, inner_store.total_read_request_count(&path_3));
 
-        prune_notifier.changed().await.unwrap();
-        assert_eq!(23, *prune_notifier.borrow_and_update());
+        // prune_notifier.changed().await.unwrap();
+        // assert_eq!(23, *prune_notifier.borrow_and_update());
 
         // GET paris from the cached store, this will not be served by the cache, because paris was
         // evicted by neelix:
@@ -1309,7 +1174,7 @@ pub(crate) mod tests {
         assert_eq!(1, inner_store.total_read_request_count(&path_3));
     }
 
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     async fn cache_hit_while_fetching() {
         // Create the object store with the following layers:
         // Synchronized -> RequestCounted -> Inner
@@ -1448,7 +1313,7 @@ pub(crate) mod tests {
         }
     }
 
-    #[tokio::test]
+    #[test_log::test(tokio::test)]
     async fn cache_metrics() {
         // test setup
         let to_store_notify = Arc::new(Notify::new());
@@ -1551,13 +1416,13 @@ pub(crate) mod tests {
         let time_provider: Arc<dyn TimeProvider> =
             Arc::new(MockProvider::new(Time::from_timestamp_nanos(100)));
         let max_size_bytes = 100;
-        let cache = Cache::new(
+        let cache: Arc<dyn CacheProvider> = Arc::new(Cache::new(
             max_size_bytes,
             0.1,
             Arc::clone(&time_provider),
             Arc::new(Registry::new()),
             Duration::from_nanos(100),
-        );
+        ));
 
         let file_timestamp_min_max = Some(TimestampMinMax::new(0, 100));
         let should_cache = should_request_be_cached(file_timestamp_min_max, &cache);
@@ -1569,13 +1434,13 @@ pub(crate) mod tests {
         let time_provider: Arc<dyn TimeProvider> =
             Arc::new(MockProvider::new(Time::from_timestamp_nanos(1000)));
         let max_size_bytes = 100;
-        let cache = Cache::new(
+        let cache: Arc<dyn CacheProvider> = Arc::new(Cache::new(
             max_size_bytes,
             0.1,
             Arc::clone(&time_provider),
             Arc::new(Registry::new()),
             Duration::from_nanos(100),
-        );
+        ));
 
         let file_timestamp_min_max = Some(TimestampMinMax::new(0, 100));
         let should_cache = should_request_be_cached(file_timestamp_min_max, &cache);
@@ -1587,13 +1452,13 @@ pub(crate) mod tests {
         let time_provider: Arc<dyn TimeProvider> =
             Arc::new(MockProvider::new(Time::from_timestamp_nanos(1000)));
         let max_size_bytes = 100;
-        let cache = Cache::new(
+        let cache: Arc<dyn CacheProvider> = Arc::new(Cache::new(
             max_size_bytes,
             0.1,
             Arc::clone(&time_provider),
             Arc::new(Registry::new()),
             Duration::from_nanos(100),
-        );
+        ));
 
         let file_timestamp_min_max = Some(TimestampMinMax::new(0, 100));
         let should_cache = should_request_be_cached(file_timestamp_min_max, &cache);

@@ -27,6 +27,8 @@ chrono.workspace = true
 dashmap.workspace = true
 datafusion.workspace = true
 futures.workspace = true
+hashbrown.workspace = true
+hashlink.workspace = true
 indexmap.workspace = true
 parking_lot.workspace = true
 object_store.workspace = true
@@ -45,6 +47,8 @@ influxdb3_test_helpers = { path = "../influxdb3_test_helpers" }
 
 # crates.io deps
 bimap.workspace = true
+criterion.workspace = true
+dhat.workspace = true
 insta.workspace = true
 object_store.workspace = true
 pretty_assertions.workspace = true
