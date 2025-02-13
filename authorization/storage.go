@@ -229,7 +229,7 @@ func (s *Store) autogenerateHasher(ctx context.Context, variantName string) (*Au
 	for _, a := range auths {
 		if a.HashedToken != "" {
 			digest, err := tempDecoder.Decode(a.HashedToken)
-			if err != nil {
+			if err == nil {
 				if influxdbDigest, ok := digest.(*influxdb2_algo.Digest); ok {
 					foundVariants[influxdbDigest.Variant] = struct{}{}
 				}
