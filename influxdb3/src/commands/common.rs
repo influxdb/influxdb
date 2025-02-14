@@ -1,8 +1,9 @@
 use clap::{Parser, ValueEnum};
+use observability_deps::tracing::warn;
 use secrecy::Secret;
-use std::error::Error;
 use std::fmt::Display;
 use std::str::FromStr;
+use std::{env, error::Error};
 use url::Url;
 
 #[derive(Debug, Parser)]
@@ -164,4 +165,15 @@ where
         .find(':')
         .ok_or_else(|| format!("invalid FIELD:VALUE. No `:` found in `{s}`"))?;
     Ok((s[..pos].parse()?, s[pos + 1..].parse()?))
+}
+
+/// If passed in env vars are set, then it writes to log along with what the user can switch to
+pub fn warn_use_of_deprecated_env_vars(deprecated_vars: &[(&'static str, &'static str)]) {
+    deprecated_vars
+        .iter()
+        .for_each(|(deprecated_var, migration_msg)| {
+            if env::var(deprecated_var).is_ok() {
+                warn!("detected deprecated/removed env var {deprecated_var}, {migration_msg}");
+            }
+        });
 }

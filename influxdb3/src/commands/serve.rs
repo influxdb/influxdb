@@ -57,6 +57,8 @@ use trace_exporters::TracingConfig;
 use trace_http::ctx::TraceHeaderParser;
 use trogging::cli::LoggingConfig;
 
+use crate::commands::common::warn_use_of_deprecated_env_vars;
+
 /// The default name of the influxdb data directory
 #[allow(dead_code)]
 pub const DEFAULT_DATA_DIRECTORY_NAME: &str = ".influxdb3";
@@ -104,6 +106,14 @@ pub enum Error {
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
+// variable name and migration message tuples
+const DEPRECATED_ENV_VARS: &[(&str, &str)] = &[(
+    "INFLUXDB3_PARQUET_MEM_CACHE_SIZE_MB",
+    "use INFLUXDB3_PARQUET_MEM_CACHE_SIZE instead, it is in MB or %",
+)];
+
+/// Try to keep all the memory size in MB instead of raw bytes, also allow
+/// them to be configured as a percentage of total memory using MemorySizeMb
 #[derive(Debug, clap::Parser)]
 pub struct Config {
     /// object store options
@@ -144,27 +154,16 @@ pub struct Config {
     )]
     pub http_bind_address: SocketAddr,
 
-    /// Size of the RAM cache used to store data in bytes.
+    /// Size of memory pool used during query exec, in megabytes.
     ///
     /// Can be given as absolute value or in percentage of the total available memory (e.g. `10%`).
     #[clap(
-    long = "ram-pool-data-bytes",
-    env = "INFLUXDB3_RAM_POOL_DATA_BYTES",
-    default_value = "1073741824",  // 1GB
-    action
+        long = "exec-mem-pool-bytes",
+        env = "INFLUXDB3_EXEC_MEM_POOL_BYTES",
+        default_value = "20%",
+        action
     )]
-    pub ram_pool_data_bytes: MemorySize,
-
-    /// Size of memory pool used during query exec, in bytes.
-    ///
-    /// Can be given as absolute value or in percentage of the total available memory (e.g. `10%`).
-    #[clap(
-    long = "exec-mem-pool-bytes",
-    env = "INFLUXDB3_EXEC_MEM_POOL_BYTES",
-    default_value = "8589934592",  // 8GB
-    action
-    )]
-    pub exec_mem_pool_bytes: MemorySize,
+    pub exec_mem_pool_bytes: MemorySizeMb,
 
     /// bearer token to be set for requests
     #[clap(long = "bearer-token", env = "INFLUXDB3_BEARER_TOKEN", action)]
@@ -234,16 +233,6 @@ pub struct Config {
     )]
     pub query_log_size: usize,
 
-    // TODO - make this default to 70% of available memory:
-    /// The size limit of the buffered data. If this limit is passed a snapshot will be forced.
-    #[clap(
-        long = "buffer-mem-limit-mb",
-        env = "INFLUXDB3_BUFFER_MEM_LIMIT_MB",
-        default_value = "5000",
-        action
-    )]
-    pub buffer_mem_limit_mb: usize,
-
     /// The node idendifier used as a prefix in all object store file paths. This should be unique
     /// for any InfluxDB 3 Core servers that share the same object store configuration, i.e., the
     /// same bucket.
@@ -256,14 +245,15 @@ pub struct Config {
     )]
     pub node_identifier_prefix: String,
 
-    /// The size of the in-memory Parquet cache in megabytes (MB).
+    /// The size of the in-memory Parquet cache in megabytes or percentage of total available mem.
+    /// breaking: removed parquet-mem-cache-size-mb and env var INFLUXDB3_PARQUET_MEM_CACHE_SIZE_MB
     #[clap(
-        long = "parquet-mem-cache-size-mb",
-        env = "INFLUXDB3_PARQUET_MEM_CACHE_SIZE_MB",
-        default_value = "1000",
+        long = "parquet-mem-cache-size",
+        env = "INFLUXDB3_PARQUET_MEM_CACHE_SIZE",
+        default_value = "20%",
         action
     )]
-    pub parquet_mem_cache_size: ParquetCacheSizeMb,
+    pub parquet_mem_cache_size: MemorySizeMb,
 
     /// The percentage of entries to prune during a prune operation on the in-memory Parquet cache.
     ///
@@ -330,15 +320,15 @@ pub struct Config {
     #[clap(flatten)]
     pub processing_engine_config: ProcessingEngineConfig,
 
-    /// Threshold for internal buffer, can be either percentage or absolute value.
-    /// eg: 70% or 100000
+    /// Threshold for internal buffer, can be either percentage or absolute value in MB.
+    /// eg: 70% or 1000 MB
     #[clap(
         long = "force-snapshot-mem-threshold",
         env = "INFLUXDB3_FORCE_SNAPSHOT_MEM_THRESHOLD",
-        default_value = "70%",
+        default_value = "50%",
         action
     )]
-    pub force_snapshot_mem_threshold: MemorySize,
+    pub force_snapshot_mem_threshold: MemorySizeMb,
 
     /// Disable sending telemetry data to telemetry.v3.influxdata.com.
     #[clap(
@@ -372,22 +362,28 @@ pub struct Config {
 
 /// Specified size of the Parquet cache in megabytes (MB)
 #[derive(Debug, Clone, Copy)]
-pub struct ParquetCacheSizeMb(usize);
+pub struct MemorySizeMb(usize);
 
-impl ParquetCacheSizeMb {
+impl MemorySizeMb {
     /// Express this cache size in terms of bytes (B)
     fn as_num_bytes(&self) -> usize {
-        self.0 * 1_000 * 1_000
+        self.0
     }
 }
 
-impl FromStr for ParquetCacheSizeMb {
-    type Err = anyhow::Error;
+impl FromStr for MemorySizeMb {
+    type Err = String;
 
     fn from_str(s: &str) -> std::prelude::v1::Result<Self, Self::Err> {
-        s.parse()
-            .context("failed to parse parquet cache size value as an unsigned integer")
-            .map(Self)
+        let num_bytes = if s.contains("%") {
+            let mem_size = MemorySize::from_str(s)?;
+            mem_size.bytes()
+        } else {
+            let num_mb = usize::from_str(s)
+                .map_err(|_| "failed to parse value as unsigned integer".to_string())?;
+            num_mb * 1000 * 1000
+        };
+        Ok(Self(num_bytes))
     }
 }
 
@@ -441,6 +437,9 @@ pub async fn command(config: Config) -> Result<()> {
         "InfluxDB 3 Core server starting",
     );
     debug!(%build_malloc_conf, "build configuration");
+
+    // check if any env vars that are deprecated is still being passed around and warn
+    warn_use_of_deprecated_env_vars(DEPRECATED_ENV_VARS);
 
     let metrics = setup_metric_registry();
 
@@ -501,7 +500,7 @@ pub async fn command(config: Config) -> Result<()> {
                 .map(|store| (store.id(), Arc::clone(store.object_store())))
                 .collect(),
             metric_registry: Arc::clone(&metrics),
-            mem_pool_size: config.exec_mem_pool_bytes.bytes(),
+            mem_pool_size: config.exec_mem_pool_bytes.as_num_bytes(),
         },
         DedicatedExecutor::new(
             "datafusion",
@@ -573,7 +572,7 @@ pub async fn command(config: Config) -> Result<()> {
 
     info!("setting up background mem check for query buffer");
     background_buffer_checker(
-        config.force_snapshot_mem_threshold.bytes(),
+        config.force_snapshot_mem_threshold.as_num_bytes(),
         &write_buffer_impl,
     )
     .await;
