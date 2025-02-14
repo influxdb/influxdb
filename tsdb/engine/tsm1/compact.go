@@ -1076,6 +1076,9 @@ func (c *Compactor) CompactFast(tsmFiles []string, logger *zap.Logger) ([]string
 // removeTmpFiles is responsible for cleaning up a compaction that
 // was started, but then abandoned before the temporary files were dealt with.
 func (c *Compactor) removeTmpFiles(files []string) error {
+	if len(files) <= 0 {
+		return errors.New("files list is empty; no files to remove")
+	}
 	for _, f := range files {
 		if err := os.Remove(f); err != nil {
 			return fmt.Errorf("error removing temp compaction file: %v", err)
