@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"math/rand"
 	"os"
 	"sort"
 	"sync"
@@ -213,6 +214,22 @@ func (f *LogFile) FlushAndSync() error {
 		return nil
 	}
 	return f.file.Sync()
+}
+
+// FlushAndSync flushes buffered data to disk
+// If the LogFile has disabled flushing and syncing then FlushAndSync is a no-op.
+func (f *LogFile) Flush() error {
+	if f.nosync {
+		return nil
+	}
+
+	if f.w != nil {
+		if err := f.w.Flush(); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // ID returns the file sequence identifier.
@@ -565,10 +582,18 @@ func (f *LogFile) AddSeriesList(seriesSet *tsdb.SeriesIDSet, names [][]byte, tag
 		seriesSet.AddNoLock(entry.SeriesID)
 	}
 
-	// Flush buffer and sync to disk.
-	if err := f.FlushAndSync(); err != nil {
-		return nil, err
+	if rand.Intn(100) < 10 {
+		// Flush buffer and sync to disk.
+		if err := f.FlushAndSync(); err != nil {
+			return nil, err
+		}
+	} else {
+		// Flush buffer.
+		if err := f.Flush(); err != nil {
+			return nil, err
+		}
 	}
+
 	return seriesIDs, nil
 }
 
