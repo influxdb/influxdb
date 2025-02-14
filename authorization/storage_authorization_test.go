@@ -465,6 +465,7 @@ func TestAuthorizationStore_HashingConfigChanges(t *testing.T) {
 
 				return nil
 			})
+			require.NoError(t, err)
 		})
 
 	}

@@ -158,13 +158,10 @@ func TestService_handlePostAuthorization(t *testing.T) {
 				router.Mount(handler.Prefix(), handler)
 
 				req, err := newPostAuthorizationRequest(tt.args.authorization)
-				if err != nil {
-					t.Fatalf("failed to create new authorization request: %v", err)
-				}
+				require.NoError(t, err)
+
 				b, err := json.Marshal(req)
-				if err != nil {
-					t.Fatalf("failed to unmarshal authorization: %v", err)
-				}
+				require.NoError(t, err)
 
 				r := httptest.NewRequest("GET", "http://any.url", bytes.NewReader(b))
 				r = r.WithContext(context.WithValue(
@@ -185,21 +182,16 @@ func TestService_handlePostAuthorization(t *testing.T) {
 				handler.handlePostAuthorization(w, r)
 
 				res := w.Result()
-				content := res.Header.Get("Content-Type")
+				contentType := res.Header.Get("Content-Type")
 				body, _ := io.ReadAll(res.Body)
 
-				if res.StatusCode != tt.wants.statusCode {
-					t.Logf("headers: %v body: %s", res.Header, body)
-					t.Errorf("%q. handlePostAuthorization() = %v, want %v", tt.name, res.StatusCode, tt.wants.statusCode)
+				require.Equalf(t, tt.wants.statusCode, res.StatusCode, "headers: %v body: %s", res.Header, body)
+				if tt.wants.contentType != "" {
+					require.Equal(t, tt.wants.contentType, contentType)
 				}
-				if tt.wants.contentType != "" && content != tt.wants.contentType {
-					t.Errorf("%q. handlePostAuthorization() = %v, want %v", tt.name, content, tt.wants.contentType)
-				}
-				if diff, err := jsonDiff(string(body), tt.wants.body); diff != "" {
-					t.Errorf("%q. handlePostAuthorization() = ***%s***", tt.name, diff)
-				} else if err != nil {
-					t.Errorf("%q, handlePostAuthorization() error: %v", tt.name, err)
-				}
+				diff, err := jsonDiff(string(body), tt.wants.body)
+				require.NoError(t, err)
+				require.Empty(t, diff)
 			})
 		}
 	}
@@ -353,21 +345,16 @@ func TestService_handleGetAuthorization(t *testing.T) {
 			handler.handleGetAuthorization(w, r)
 
 			res := w.Result()
-			content := res.Header.Get("Content-Type")
+			contentType := res.Header.Get("Content-Type")
 			body, _ := io.ReadAll(res.Body)
 
-			if res.StatusCode != tt.wants.statusCode {
-				t.Logf("headers: %v body: %s", res.Header, body)
-				t.Errorf("%q. handleGetAuthorization() = %v, want %v", tt.name, res.StatusCode, tt.wants.statusCode)
+			require.Equalf(t, tt.wants.statusCode, res.StatusCode, "headers: %v body: %s", res.Header, body)
+			if tt.wants.contentType != "" {
+				require.Equal(t, tt.wants.contentType, contentType)
 			}
-			if tt.wants.contentType != "" && content != tt.wants.contentType {
-				t.Errorf("%q. handleGetAuthorization() = %v, want %v", tt.name, content, tt.wants.contentType)
-			}
-			if diff, err := jsonDiff(string(body), tt.wants.body); err != nil {
-				t.Errorf("%q, handleGetAuthorization. error unmarshalling json %v", tt.name, err)
-			} else if tt.wants.body != "" && diff != "" {
-				t.Errorf("%q. handleGetAuthorization() = -got/+want %s**", tt.name, diff)
-			}
+			diff, err := jsonDiff(string(body), tt.wants.body)
+			require.NoError(t, err)
+			require.Empty(t, diff)
 		})
 	}
 }
@@ -719,9 +706,7 @@ func TestService_handleGetAuthorizations(t *testing.T) {
 				s := itesting.NewTestInmemStore(t)
 
 				storage, err := NewStore(context.Background(), s, useHashedTokens)
-				if err != nil {
-					t.Fatal(err)
-				}
+				require.NoError(t, err)
 
 				svc := NewService(storage, tt.fields.TenantService)
 
@@ -744,21 +729,16 @@ func TestService_handleGetAuthorizations(t *testing.T) {
 				handler.handleGetAuthorizations(w, r)
 
 				res := w.Result()
-				content := res.Header.Get("Content-Type")
+				contentType := res.Header.Get("Content-Type")
 				body, _ := io.ReadAll(res.Body)
 
-				if res.StatusCode != tt.wants.statusCode {
-					t.Errorf("%q. handleGetAuthorizations() = %v, want %v", tt.name, res.StatusCode, tt.wants.statusCode)
+				require.Equal(t, tt.wants.statusCode, res.StatusCode)
+				if tt.wants.contentType != "" {
+					require.Equal(t, tt.wants.contentType, contentType)
 				}
-				if tt.wants.contentType != "" && content != tt.wants.contentType {
-					t.Errorf("%q. handleGetAuthorizations() = %v, want %v", tt.name, content, tt.wants.contentType)
-				}
-				if diff, err := jsonDiff(string(body), tt.wants.body); diff != "" {
-					t.Errorf("%q. handleGetAuthorizations() = ***%s***", tt.name, diff)
-				} else if err != nil {
-					t.Errorf("%q, handleGetAuthorizations() error: %v", tt.name, err)
-				}
-
+				diff, err := jsonDiff(string(body), tt.wants.body)
+				require.NoError(t, err)
+				require.Empty(t, diff)
 			})
 		}
 	}
@@ -846,22 +826,18 @@ func TestService_handleDeleteAuthorization(t *testing.T) {
 			handler.handleDeleteAuthorization(w, r)
 
 			res := w.Result()
-			content := res.Header.Get("Content-Type")
+			contentType := res.Header.Get("Content-Type")
 			body, _ := io.ReadAll(res.Body)
 
-			if res.StatusCode != tt.wants.statusCode {
-				t.Errorf("%q. handleDeleteAuthorization() = %v, want %v", tt.name, res.StatusCode, tt.wants.statusCode)
-			}
-			if tt.wants.contentType != "" && content != tt.wants.contentType {
-				t.Errorf("%q. handleDeleteAuthorization() = %v, want %v", tt.name, content, tt.wants.contentType)
+			require.Equal(t, tt.wants.statusCode, res.StatusCode)
+			if tt.wants.contentType != "" {
+				require.Equal(t, tt.wants.contentType, contentType)
 			}
 
 			if tt.wants.body != "" {
-				if diff, err := jsonDiff(string(body), tt.wants.body); err != nil {
-					t.Errorf("%q, handleDeleteAuthorization(). error unmarshalling json %v", tt.name, err)
-				} else if diff != "" {
-					t.Errorf("%q. handleDeleteAuthorization() = ***%s***", tt.name, diff)
-				}
+				diff, err := jsonDiff(string(body), tt.wants.body)
+				require.NoError(t, err)
+				require.Empty(t, diff)
 			}
 		})
 	}

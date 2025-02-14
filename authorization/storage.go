@@ -54,7 +54,7 @@ The implementation has the following behaviors under different scenarios:
     the hash algorithm (e.g. `SHA-512``) instead of the hashed token value.
 * Downgrading to an older InfluxDB without hashed token support with a BoltDB containing hashed tokens.
   * Downgrading requires a manual `influxd downgrade` command. If hashed tokens are found in the
-    BoltDB, user configuration is required. The user can also list impacted tokens. When downgrade is
+    BoltDB, user confirmation is required. The user can also list impacted tokens. When downgrade is
 	complete, all hashed tokens have been deleted from BoltDB along with their indices. The tokens with
 	deleted hashes are no longer useable.
   * Operations are as usual in InfluxDB 2.7.
@@ -78,7 +78,7 @@ When token hashing is enabled and a backup is restored, raw tokens are hashed be
 into BoltDB. Raw tokens are not stored.
 
 To verify tokens when hashed tokens are enabled, the presented token's hash is calculated and used
-for the token index lookup. The rest of the authorization flow is unchanged.
+for token index lookup. The rest of the authorization flow is unchanged.
 
 To verify tokens when hashed tokens are disabled, the an attempt is made to parse the presented token as
 PHC. If the parse succeeds, the access is denied. This prevents an attack described below. After this check,
@@ -100,7 +100,7 @@ can not be used.
 A potential future security would be optionally storing "peppered" hashes. This would require retrieving
 the pepper key from outside of BoltDB, for example from Vault.
 
-When listing tokens, hashed tokens are listed of "REDACTED" instead of the hashed
+When listing tokens, hashed tokens are listed as "REDACTED" instead of the hashed
 token value. Raw token values are returned as in previous versions.
 
 ---*/
@@ -277,7 +277,7 @@ func (s *Store) hashedTokenMigration(ctx context.Context) error {
 
 	for batch := range slices.Chunk(authsNeedingUpdate, 100) {
 		err := s.Update(ctx, func(tx kv.Tx) error {
-			// Now update them. This really seems too simple, but s.UpdateJAuthorization() is magical.
+			// Now update them. This really seems too simple, but s.UpdateAuthorization() is magical.
 			for _, a := range batch {
 				if _, err := s.UpdateAuthorization(ctx, tx, a.ID, a); err != nil {
 					return err

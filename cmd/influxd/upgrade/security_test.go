@@ -5,18 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"sort"
 	"testing"
 	"unsafe"
 
-	"github.com/google/go-cmp/cmp"
 	"github.com/influxdata/influxdb/v2"
 	"github.com/influxdata/influxdb/v2/authorization"
 	"github.com/influxdata/influxdb/v2/inmem"
 	"github.com/influxdata/influxdb/v2/kit/platform"
 	"github.com/influxdata/influxdb/v2/kv/migration"
 	"github.com/influxdata/influxdb/v2/kv/migration/all"
-	"github.com/influxdata/influxdb/v2/pkg/testing/assert"
 	"github.com/influxdata/influxdb/v2/tenant"
 	authv1 "github.com/influxdata/influxdb/v2/v1/authorization"
 	"github.com/influxdata/influxdb/v2/v1/services/meta"
@@ -145,7 +142,7 @@ func TestUpgradeSecurity(t *testing.T) {
 	for _, tc := range testCases {
 		for _, useHashedTokens := range []bool{false, true} {
 			tc := tc
-			t.Run(fmt.Sprintf("%s/HashedTokens=%t", tc.name, useHashedTokens), func(t *testing.T) { // better do not run in parallel
+			t.Run(fmt.Sprintf("%s/HashedTokens=%t", tc.name, useHashedTokens), func(t *testing.T) { // better to not run in parallel
 				ctx := context.Background()
 				log := zaptest.NewLogger(t)
 
@@ -262,46 +259,22 @@ func TestUpgradeSecurity(t *testing.T) {
 
 				// command execution
 				n, err := upgradeUsers(ctx, v1, v2, &targetOptions, tc.db2ids, log)
-				assert.Equal(t, len(tc.want), n, "Upgraded count must match")
-				if err != nil {
-					if tc.wantErr != nil {
-						if diff := cmp.Diff(tc.wantErr.Error(), err.Error()); diff != "" {
-							t.Fatal(diff)
-						}
-					} else {
-						t.Fatal(err)
-					}
-				} else if tc.wantErr != nil {
-					t.Fatalf("should have failed with %v", tc.wantErr)
+				if tc.wantErr != nil {
+					require.EqualError(t, err, tc.wantErr.Error())
+				} else {
+					require.NoError(t, err)
 				}
+				require.Equal(t, len(tc.want), n, "Upgraded count must match")
+
 				for _, want := range tc.want {
 					actual, err := v2.authSvc.FindAuthorizationByToken(ctx, want.Token)
 					require.NoError(t, err)
-					if diff := cmp.Diff(targetOptions.orgID, actual.OrgID); diff != "" {
-						t.Fatal(diff)
-					}
-					if diff := cmp.Diff(targetOptions.userID, actual.UserID); diff != "" {
-						t.Fatal(diff)
-					}
-					if diff := cmp.Diff(want.Token, actual.Token); diff != "" {
-						t.Fatal(diff)
-					}
-					if diff := cmp.Diff(want.Description, actual.Description); diff != "" {
-						t.Fatal(diff)
-					}
-					if diff := cmp.Diff(want.Status, actual.Status); diff != "" {
-						t.Fatal(diff)
-					}
-					sort.Slice(want.Permissions, func(i, j int) bool {
-						return *(want.Permissions[i].Resource.ID) < *(want.Permissions[j].Resource.ID)
-					})
-					sort.Slice(actual.Permissions, func(i, j int) bool {
-						return *(actual.Permissions[i].Resource.ID) < *(actual.Permissions[j].Resource.ID)
-					})
-					if diff := cmp.Diff(want.Permissions, actual.Permissions); diff != "" {
-						t.Logf("permissions mismatch for user %s", want.Token)
-						t.Fatal(diff)
-					}
+					require.Equal(t, targetOptions.orgID, actual.OrgID)
+					require.Equal(t, targetOptions.userID, actual.UserID)
+					require.Equal(t, want.Token, actual.Token)
+					require.Equal(t, want.Description, actual.Description)
+					require.Equal(t, want.Status, actual.Status)
+					require.ElementsMatch(t, want.Permissions, actual.Permissions)
 				}
 			})
 		}

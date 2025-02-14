@@ -35,6 +35,11 @@ func (h *Hasher) WithOptions(opts ...Opt) (err error) {
 	return nil
 }
 
+// Variant returns which variant this hasher implements.
+func (h *Hasher) Variant() Variant {
+	return h.variant
+}
+
 // Validate checks the hasher configuration to ensure it's valid. This should be used when the influxdb2.Hasher is going
 // to be reused and you should use it in conjunction with MustHash.
 func (h *Hasher) Validate() (err error) {

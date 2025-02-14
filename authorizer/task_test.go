@@ -38,9 +38,7 @@ func TestOnboardingValidation(t *testing.T) {
 				Bucket:                 "holder",
 				RetentionPeriodSeconds: 1,
 			})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 
 			ctx := pctx.SetAuthorizer(context.Background(), r.Auth)
 
@@ -53,9 +51,7 @@ func TestOnboardingValidation(t *testing.T) {
 }
 from(bucket:"holder") |> range(start:-5m) |> to(bucket:"holder", org:"thing")`,
 			})
-			if err != nil {
-				t.Fatal(err)
-			}
+			require.NoError(t, err)
 		})
 	}
 }
@@ -146,22 +142,18 @@ func runTestValidations(useHashedTokens bool, t *testing.T) {
 		Bucket:                 "holder",
 		RetentionPeriodSeconds: 1,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	if err := svc.CreateOrganization(context.Background(), otherOrg); err != nil {
-		t.Fatal(err)
-	}
+	err = svc.CreateOrganization(context.Background(), otherOrg)
+	require.NoError(t, err)
 
 	otherBucket := &influxdb.Bucket{
 		Name:  "other_bucket",
 		OrgID: otherOrg.ID,
 	}
 
-	if err = svc.CreateBucket(context.Background(), otherBucket); err != nil {
-		t.Fatal(err)
-	}
+	err = svc.CreateBucket(context.Background(), otherBucket)
+	require.NoError(t, err)
 
 	var (
 		orgID            = r.Org.ID
@@ -611,9 +603,8 @@ func newStore(t *testing.T) kv.Store {
 
 	store := inmem.NewKVStore()
 
-	if err := all.Up(context.Background(), zaptest.NewLogger(t), store); err != nil {
-		t.Fatal(err)
-	}
+	err := all.Up(context.Background(), zaptest.NewLogger(t), store)
+	require.NoError(t, err)
 
 	return store
 }

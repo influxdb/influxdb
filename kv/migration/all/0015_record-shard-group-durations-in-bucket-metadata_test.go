@@ -21,7 +21,7 @@ func TestMigration_ShardGroupDuration(t *testing.T) {
 func testRepairMissingShardGroupDurations(t *testing.T, migrationNum int) {
 	t.Helper()
 	for _, useTokenHashing := range []bool{false, true} {
-		name := fmt.Sprintf("RepairMissingSHardGroupDurations/migrationNum=%d/useTokenHashing=%t", migrationNum, useTokenHashing)
+		name := fmt.Sprintf("RepairMissingShardGroupDurations/migrationNum=%d/useTokenHashing=%t", migrationNum, useTokenHashing)
 		t.Run(name, func(t *testing.T) {
 			testRepairMissingShardGroupDurationsWithTokenHashing(t, migrationNum, useTokenHashing)
 		})

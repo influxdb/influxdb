@@ -17,6 +17,8 @@ import (
 
 var (
 	ErrHashedTokenMismatch = goerrors.New("HashedToken does not match Token")
+	ErrIncorrectToken      = goerrors.New("token is incorrect for authorization")
+	ErrNoTokenAvailable    = goerrors.New("no token available for authorization")
 )
 
 func authIndexKey(n string) []byte {
@@ -175,6 +177,25 @@ func (s *Store) GetAuthorizationByID(ctx context.Context, tx kv.Tx, id platform.
 	return a, nil
 }
 
+// validateToken checks if token matches tht token stored in auth. If auth.Token is set, that is
+// compared first. Otherwise, auth.HashedToken is used to verify token. If neither field in auth is set, then
+// the comparison fails.
+func (s *Store) validateToken(auth *influxdb.Authorization, token string) (bool, error) {
+	if auth.Token != "" {
+		return auth.Token == token, nil
+	}
+
+	if auth.HashedToken != "" {
+		match, err := s.hasher.Match(auth.HashedToken, token)
+		if err != nil {
+			return false, fmt.Errorf("error matching hashed token for validation: %w", err)
+		}
+		return match, nil
+	}
+
+	return false, ErrNoTokenAvailable
+}
+
 // GetAuthorizationsByToken searches for an authorization by its raw (unhashed) token value. It will also search
 // for entires with equivalent hashed tokens if the raw token is not directly found.
 func (s *Store) GetAuthorizationByToken(ctx context.Context, tx kv.Tx, token string) (auth *influxdb.Authorization, retErr error) {
@@ -246,7 +267,26 @@ func (s *Store) GetAuthorizationByToken(ctx context.Context, tx kv.Tx, token str
 		}
 	}
 
-	return s.GetAuthorizationByID(ctx, tx, id)
+	// Verify that the token stored in auth matches the requested token. This should be superfluous check, but
+	// we will just in case somehow the authorization record got out of sync with the index.
+	auth, err = s.GetAuthorizationByID(ctx, tx, id)
+	if err != nil {
+		return nil, &errors.Error{
+			Code: errors.EInternal,
+			Err:  err,
+		}
+	}
+	match, err := s.validateToken(auth, token)
+	if err != nil {
+		return nil, &errors.Error{
+			Code: errors.EInternal,
+			Err:  err,
+		}
+	}
+	if !match {
+		return nil, errors.EIncorrectPassword
+	}
+	return auth, nil
 }
 
 // ListAuthorizations returns all the authorizations matching a set of FindOptions. This function is used for
@@ -310,11 +350,11 @@ func (s *Store) forEachAuthorization(ctx context.Context, tx kv.Tx, pred kv.Curs
 // returned on success.
 func (s *Store) commitAuthorization(ctx context.Context, tx kv.Tx, a *influxdb.Authorization) error {
 	if err := s.verifyTokensMatch(a); err != nil {
-		return err
+		return errors.ErrInternalServiceError(err, errors.WithErrorCode(errors.EInvalid))
 	}
 
 	if err := s.hashToken(a); err != nil {
-		return err
+		return errors.ErrInternalServiceError(err, errors.WithErrorCode(errors.EInternal))
 	}
 
 	v, err := s.encodeAuthorization(a)
@@ -330,11 +370,11 @@ func (s *Store) commitAuthorization(ctx context.Context, tx kv.Tx, a *influxdb.A
 	if !s.useHashedTokens && a.Token != "" {
 		idx, err := authIndexBucket(tx)
 		if err != nil {
-			return err
+			return errors.ErrInternalServiceError(err, errors.WithErrorCode(errors.EInternal))
 		}
 
 		if err := idx.Put(authIndexKey(a.Token), encodedID); err != nil {
-			return err
+			return errors.ErrInternalServiceError(err, errors.WithErrorCode(errors.EInternal))
 		}
 	}
 
@@ -342,21 +382,21 @@ func (s *Store) commitAuthorization(ctx context.Context, tx kv.Tx, a *influxdb.A
 		idx, err := hashedAuthIndexBucket(tx)
 		// Don't ignore a missing index here, we want an error.
 		if err != nil {
-			return err
+			return errors.ErrInternalServiceError(err, errors.WithErrorCode(errors.EInternal))
 		}
 
 		if err := idx.Put(hashedAuthIndexKey(a.HashedToken), encodedID); err != nil {
-			return err
+			return errors.ErrInternalServiceError(err, errors.WithErrorCode(errors.EInternal))
 		}
 	}
 
 	b, err := tx.Bucket(authBucket)
 	if err != nil {
-		return err
+		return errors.ErrInternalServiceError(err, errors.WithErrorCode(errors.EInternal))
 	}
 
 	if err := b.Put(encodedID, v); err != nil {
-		return err
+		return errors.ErrInternalServiceError(err, errors.WithErrorCode(errors.EInternal))
 	}
 
 	return nil

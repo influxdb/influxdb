@@ -113,7 +113,11 @@ func (h *AuthorizationHasher) AllHashes(token string) ([]string, error) {
 	for idx, h := range h.allHashers {
 		digest, err := h.Hash(token)
 		if err != nil {
-			return nil, fmt.Errorf("hashing raw token failed: %w", err)
+			variantName := "N/A"
+			if influxdb_hasher, ok := h.(*influxdb2_algo.Hasher); ok {
+				variantName = influxdb_hasher.Variant().Prefix()
+			}
+			return nil, fmt.Errorf("hashing raw token failed (variant=%s): %w", variantName, err)
 		}
 		hashes[idx] = digest.Encode()
 	}

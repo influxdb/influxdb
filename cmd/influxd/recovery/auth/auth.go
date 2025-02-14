@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -66,13 +67,15 @@ func NewAuthListCommand() *cobra.Command {
 	return cmd
 }
 
-func (cmd *authListCommand) run() error {
+func (cmd *authListCommand) run() (rErr error) {
 	ctx := context.Background()
 	store := bolt.NewKVStore(cmd.logger.With(zap.String("system", "bolt-kvstore")), cmd.boltPath)
 	if err := store.Open(ctx); err != nil {
 		return err
 	}
-	defer store.Close()
+	defer func() {
+		rErr = errors.Join(store.Close(), rErr)
+	}()
 	tenantStore := tenant.NewStore(store)
 	tenantService := tenant.NewService(tenantStore)
 
