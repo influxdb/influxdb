@@ -15,7 +15,11 @@ var (
 )
 
 func TestTaskConcurrency(t *testing.T) {
-	tes := taskExecutorSystem(t)
+	runTestWithTokenHashing("TestTaskConcurrency", testTaskConcurrency, t)
+}
+
+func testTaskConcurrency(useTokenHashing bool, t *testing.T) {
+	tes := taskExecutorSystem(useTokenHashing, t)
 	te := tes.ex
 	r1, err := te.tcs.CreateRun(context.Background(), taskWith1Concurrency.ID, time.Now().Add(-4*time.Second), time.Now())
 	if err != nil {

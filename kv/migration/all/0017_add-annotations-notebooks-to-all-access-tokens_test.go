@@ -13,11 +13,15 @@ import (
 )
 
 func TestMigration_AnnotationsNotebooksAllAccessToken(t *testing.T) {
+	runTestWithTokenHashing("TestMigration_AnnotationsNotebooksAllAccessToken", runTestMigration_AnnotationsNotebooksAllAccessToken, t)
+}
+
+func runTestMigration_AnnotationsNotebooksAllAccessToken(useTokenHashing bool, t *testing.T) {
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
 	// Run up to migration 16.
-	ts := newService(t, ctx, 16)
+	ts := newService(t, ctx, 16, useTokenHashing)
 
 	// Auth bucket contains the authorizations AKA tokens
 	authBucket := []byte("authorizationsv1")

@@ -2,6 +2,7 @@ package backend_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"testing"
 	"time"
@@ -35,7 +36,20 @@ import (
 	"go.uber.org/zap/zaptest"
 )
 
+func runTestWithTokenHashing(name string, testFunc func(bool, *testing.T), t *testing.T) {
+	t.Helper()
+	for _, useTokenHashing := range []bool{false, true} {
+		t.Run(fmt.Sprintf("%s/TokenHashing=%t", name, useTokenHashing), func(t *testing.T) {
+			testFunc(useTokenHashing, t)
+		})
+	}
+}
+
 func TestAnalyticalStore(t *testing.T) {
+	runTestWithTokenHashing("TestAnalyticalStore", runTestAnalyticalStore, t)
+}
+
+func runTestAnalyticalStore(useTokenHashing bool, t *testing.T) {
 	t.Skip("https://github.com/influxdata/influxdb/issues/22920")
 	servicetest.TestTaskService(
 		t,
@@ -50,7 +64,7 @@ func TestAnalyticalStore(t *testing.T) {
 			tenantStore := tenant.NewStore(store)
 			ts := tenant.NewService(tenantStore)
 
-			authStore, err := authorization.NewStore(store)
+			authStore, err := authorization.NewStore(ctx, store, useTokenHashing)
 			require.NoError(t, err)
 			authSvc := authorization.NewService(authStore, ts)
 

@@ -10,10 +10,11 @@ import (
 )
 
 func Test_(t *testing.T) {
+	// Token hashing isn't applicable to this test because we never migrate far enough up.
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
-	ts := newService(t, ctx, 2)
+	ts := newService(t, ctx, 2, false)
 
 	taskBucket := []byte("tasksv1")
 	id := "05da585043e02000"

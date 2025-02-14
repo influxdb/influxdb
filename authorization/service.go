@@ -19,6 +19,7 @@ type Service struct {
 	tenantService  TenantService
 }
 
+// NewService creates a new authorization service with a given Store and TenantService.
 func NewService(st *Store, ts TenantService) influxdb.AuthorizationService {
 	return &Service{
 		store:          st,
@@ -52,7 +53,7 @@ func (s *Service) CreateAuthorization(ctx context.Context, a *influxdb.Authoriza
 		return ErrTokenAlreadyExistsError
 	}
 
-	if a.Token == "" {
+	if a.Token == "" && a.HashedToken == "" {
 		token, err := s.tokenGenerator.Token()
 		if err != nil {
 			return &errors.Error{
@@ -137,6 +138,7 @@ func (s *Service) FindAuthorizations(ctx context.Context, filter influxdb.Author
 	if filter.Token != nil {
 		var auth *influxdb.Authorization
 		err := s.store.View(ctx, func(tx kv.Tx) error {
+			// GetAuthorizationsByToken also looks for equivalent hashed tokens.
 			a, e := s.store.GetAuthorizationByToken(ctx, tx, *filter.Token)
 			if e != nil {
 				return e

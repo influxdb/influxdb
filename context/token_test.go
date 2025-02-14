@@ -7,6 +7,7 @@ import (
 	"github.com/influxdata/influxdb/v2"
 	icontext "github.com/influxdata/influxdb/v2/context"
 	"github.com/influxdata/influxdb/v2/kit/platform"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGetAuthorizer(t *testing.T) {
@@ -24,19 +25,19 @@ func TestGetAuthorizer(t *testing.T) {
 	}
 }
 
-func TestGetToken(t *testing.T) {
+func TestHasToken(t *testing.T) {
+	{
+		ctx := context.Background()
+		require.Error(t, icontext.HasToken(ctx))
+	}
+
 	ctx := context.Background()
 	ctx = icontext.SetAuthorizer(ctx, &influxdb.Authorization{
 		Token: "howdy",
 	})
-	got, err := icontext.GetToken(ctx)
-	if err != nil {
-		t.Errorf("unexpected error while retrieving token: %v", err)
-	}
-
-	if want := "howdy"; got != want {
-		t.Errorf("GetToken() want %s, got %s", want, got)
-	}
+	require.NoError(t, icontext.HasToken(ctx))
+	err := icontext.HasToken(ctx)
+	require.NoError(t, err)
 }
 
 func TestGetUserID(t *testing.T) {

@@ -85,6 +85,7 @@ func runCommand(args testInfo) {
 
 	b := bytes.NewBufferString("")
 	verify.SetOut(b)
+	verify.SetErr(b)
 	if args.withStdErr {
 		verify.SetErr(b)
 	}

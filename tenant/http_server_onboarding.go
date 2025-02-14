@@ -129,6 +129,7 @@ func (a *authResponse) toPlatform() *influxdb.Authorization {
 	res := &influxdb.Authorization{
 		ID:          a.ID,
 		Token:       a.Token,
+		HashedToken: a.HashedToken,
 		Status:      a.Status,
 		Description: a.Description,
 		OrgID:       a.OrgID,

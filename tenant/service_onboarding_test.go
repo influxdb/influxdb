@@ -2,6 +2,7 @@ package tenant_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -22,24 +23,24 @@ func TestBoltOnboardingService(t *testing.T) {
 	influxdbtesting.OnboardInitialUser(initBoltOnboardingService, t)
 }
 
-func initBoltOnboardingService(f influxdbtesting.OnboardingFields, t *testing.T) (influxdb.OnboardingService, func()) {
+func initBoltOnboardingService(f influxdbtesting.OnboardingFields, useTokenHashing bool, t *testing.T) (influxdb.OnboardingService, func()) {
 	s := influxdbtesting.NewTestInmemStore(t)
-	svc := initOnboardingService(s, f, t)
+	svc := initOnboardingService(s, f, useTokenHashing, t)
 	return svc, func() {}
 }
 
-func initOnboardingService(s kv.Store, f influxdbtesting.OnboardingFields, t *testing.T) influxdb.OnboardingService {
+func initOnboardingService(s kv.Store, f influxdbtesting.OnboardingFields, useTokenHashing bool, t *testing.T) influxdb.OnboardingService {
+	ctx := context.Background()
+
 	storage := tenant.NewStore(s)
 	ten := tenant.NewService(storage)
 
-	authStore, err := authorization.NewStore(s)
+	authStore, err := authorization.NewStore(ctx, s, useTokenHashing)
 	require.NoError(t, err)
 	authSvc := authorization.NewService(authStore, ten)
 
 	// we will need an auth service as well
 	svc := tenant.NewOnboardService(ten, authSvc)
-
-	ctx := context.Background()
 
 	t.Logf("Onboarding: %v", f.IsOnboarding)
 	if !f.IsOnboarding {
@@ -53,18 +54,33 @@ func initOnboardingService(s kv.Store, f influxdbtesting.OnboardingFields, t *te
 	return svc
 }
 
+func runTestWithTokenHashing(name string, testFunc func(bool, *testing.T), t *testing.T) {
+	t.Helper()
+	for _, useTokenHashing := range []bool{false, true} {
+		t.Run(fmt.Sprintf("%s/TokenHashing=%t", name, useTokenHashing), func(t *testing.T) {
+			testFunc(useTokenHashing, t)
+		})
+	}
+}
+
 func TestOnboardURM(t *testing.T) {
+	runTestWithTokenHashing("TestOnboardURM", testOnboardURM, t)
+}
+
+func testOnboardURM(useTokenHashing bool, t *testing.T) {
+	ctx := context.Background()
+
 	s := influxdbtesting.NewTestInmemStore(t)
 	storage := tenant.NewStore(s)
 	ten := tenant.NewService(storage)
 
-	authStore, err := authorization.NewStore(s)
+	authStore, err := authorization.NewStore(ctx, s, useTokenHashing)
 	require.NoError(t, err)
 	authSvc := authorization.NewService(authStore, ten)
 
 	svc := tenant.NewOnboardService(ten, authSvc)
 
-	ctx := icontext.SetAuthorizer(context.Background(), &influxdb.Authorization{
+	ctx = icontext.SetAuthorizer(ctx, &influxdb.Authorization{
 		UserID: 123,
 	})
 
@@ -92,17 +108,23 @@ func TestOnboardURM(t *testing.T) {
 }
 
 func TestOnboardAuth(t *testing.T) {
+	runTestWithTokenHashing("TestOnboardAuth", testOnboardAuth, t)
+}
+
+func testOnboardAuth(useTokenHashing bool, t *testing.T) {
+	ctx := context.Background()
+
 	s := influxdbtesting.NewTestInmemStore(t)
 	storage := tenant.NewStore(s)
 	ten := tenant.NewService(storage)
 
-	authStore, err := authorization.NewStore(s)
+	authStore, err := authorization.NewStore(ctx, s, useTokenHashing)
 	require.NoError(t, err)
 	authSvc := authorization.NewService(authStore, ten)
 
 	svc := tenant.NewOnboardService(ten, authSvc)
 
-	ctx := icontext.SetAuthorizer(context.Background(), &influxdb.Authorization{
+	ctx = icontext.SetAuthorizer(ctx, &influxdb.Authorization{
 		UserID: 123,
 	})
 
@@ -170,11 +192,17 @@ func TestOnboardAuth(t *testing.T) {
 }
 
 func TestOnboardService_RetentionPolicy(t *testing.T) {
+	runTestWithTokenHashing("TestOnboardService_RetentionPolicy", testOnboardService_RetentionPolicy, t)
+}
+
+func testOnboardService_RetentionPolicy(useTokenHashing bool, t *testing.T) {
+	ctx := context.Background()
+
 	s := influxdbtesting.NewTestInmemStore(t)
 	storage := tenant.NewStore(s)
 	ten := tenant.NewService(storage)
 
-	authStore, err := authorization.NewStore(s)
+	authStore, err := authorization.NewStore(ctx, s, useTokenHashing)
 	require.NoError(t, err)
 
 	authSvc := authorization.NewService(authStore, ten)
@@ -182,7 +210,7 @@ func TestOnboardService_RetentionPolicy(t *testing.T) {
 	// we will need an auth service as well
 	svc := tenant.NewOnboardService(ten, authSvc)
 
-	ctx := icontext.SetAuthorizer(context.Background(), &influxdb.Authorization{
+	ctx = icontext.SetAuthorizer(ctx, &influxdb.Authorization{
 		UserID: 123,
 	})
 
@@ -202,11 +230,17 @@ func TestOnboardService_RetentionPolicy(t *testing.T) {
 }
 
 func TestOnboardService_RetentionPolicyDeprecated(t *testing.T) {
+	runTestWithTokenHashing("TestOnboardService_RetentionPolicyDeprecated", testOnboardService_RetentionPolicyDeprecated, t)
+}
+
+func testOnboardService_RetentionPolicyDeprecated(useTokenHashing bool, t *testing.T) {
+	ctx := context.Background()
+
 	s := influxdbtesting.NewTestInmemStore(t)
 	storage := tenant.NewStore(s)
 	ten := tenant.NewService(storage)
 
-	authStore, err := authorization.NewStore(s)
+	authStore, err := authorization.NewStore(ctx, s, useTokenHashing)
 	require.NoError(t, err)
 
 	authSvc := authorization.NewService(authStore, ten)
@@ -214,7 +248,7 @@ func TestOnboardService_RetentionPolicyDeprecated(t *testing.T) {
 	// we will need an auth service as well
 	svc := tenant.NewOnboardService(ten, authSvc)
 
-	ctx := icontext.SetAuthorizer(context.Background(), &influxdb.Authorization{
+	ctx = icontext.SetAuthorizer(ctx, &influxdb.Authorization{
 		UserID: 123,
 	})
 
@@ -234,25 +268,29 @@ func TestOnboardService_RetentionPolicyDeprecated(t *testing.T) {
 }
 
 func TestOnboardService_WeakPassword(t *testing.T) {
-	s := influxdbtesting.NewTestInmemStore(t)
-	storage := tenant.NewStore(s)
-	ten := tenant.NewService(storage)
+	for _, useHashedTokens := range []bool{false, true} {
+		ctx := context.Background()
 
-	authStore, err := authorization.NewStore(s)
-	require.NoError(t, err)
+		s := influxdbtesting.NewTestInmemStore(t)
+		storage := tenant.NewStore(s)
+		ten := tenant.NewService(storage)
 
-	authSvc := authorization.NewService(authStore, ten)
-	svc := tenant.NewOnboardService(ten, authSvc)
+		authStore, err := authorization.NewStore(ctx, s, useHashedTokens)
+		require.NoError(t, err)
 
-	ctx := icontext.SetAuthorizer(context.Background(), &influxdb.Authorization{
-		UserID: 123,
-	})
+		authSvc := authorization.NewService(authStore, ten)
+		svc := tenant.NewOnboardService(ten, authSvc)
 
-	_, err = svc.OnboardInitialUser(ctx, &influxdb.OnboardingRequest{
-		User:     "name",
-		Password: "short",
-		Org:      "name",
-		Bucket:   "name",
-	})
-	assert2.ErrorIs(t, err, influx_errors.EPasswordLength)
+		ctx = icontext.SetAuthorizer(ctx, &influxdb.Authorization{
+			UserID: 123,
+		})
+
+		_, err = svc.OnboardInitialUser(ctx, &influxdb.OnboardingRequest{
+			User:     "name",
+			Password: "short",
+			Org:      "name",
+			Bucket:   "name",
+		})
+		assert2.ErrorIs(t, err, influx_errors.EPasswordLength)
+	}
 }

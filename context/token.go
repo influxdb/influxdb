@@ -40,25 +40,25 @@ func GetAuthorizer(ctx context.Context) (influxdb.Authorizer, error) {
 	return a, nil
 }
 
-// GetToken retrieves a token from the context; errors if no token.
-func GetToken(ctx context.Context) (string, error) {
+// HasToken determines if a context has a token. Return is nil if token found from the context; errors if no token.
+func HasToken(ctx context.Context) error {
 	a, ok := ctx.Value(authorizerCtxKey).(influxdb.Authorizer)
 	if !ok {
-		return "", &errors.Error{
+		return &errors.Error{
 			Msg:  "authorizer not found on context",
 			Code: errors.EInternal,
 		}
 	}
 
-	auth, ok := a.(*influxdb.Authorization)
+	_, ok = a.(*influxdb.Authorization)
 	if !ok {
-		return "", &errors.Error{
+		return &errors.Error{
 			Msg:  fmt.Sprintf("authorizer not an authorization but a %T", a),
 			Code: errors.EInternal,
 		}
 	}
 
-	return auth.Token, nil
+	return nil
 }
 
 // GetUserID retrieves the user ID from the authorizer on the context.

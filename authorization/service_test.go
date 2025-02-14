@@ -11,23 +11,24 @@ import (
 	influxdbtesting "github.com/influxdata/influxdb/v2/testing"
 )
 
-func initBoltAuthService(f influxdbtesting.AuthorizationFields, t *testing.T) (influxdb.AuthorizationService, string, func()) {
+func initBoltAuthService(f influxdbtesting.AuthorizationFields, useHashedTokens bool, t *testing.T) (influxdb.AuthorizationService, string, func()) {
 	s, closeBolt := influxdbtesting.NewTestBoltStore(t)
-	svc, closeSvc := initAuthService(s, f, t)
+	svc, closeSvc := initAuthService(s, f, useHashedTokens, t)
 	return svc, "service_auth", func() {
 		closeSvc()
 		closeBolt()
 	}
 }
 
-func initAuthService(s kv.Store, f influxdbtesting.AuthorizationFields, t *testing.T) (influxdb.AuthorizationService, func()) {
+func initAuthService(s kv.Store, f influxdbtesting.AuthorizationFields, useHashedTokens bool, t *testing.T) (influxdb.AuthorizationService, func()) {
 	st := tenant.NewStore(s)
 	if f.OrgIDGenerator != nil {
 		st.OrgIDGen = f.OrgIDGenerator
 	}
 
 	ts := tenant.NewService(st)
-	storage, err := authorization.NewStore(s)
+
+	storage, err := authorization.NewStore(context.Background(), s, useHashedTokens)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,5 +64,10 @@ func initAuthService(s kv.Store, f influxdbtesting.AuthorizationFields, t *testi
 
 func TestBoltAuthService(t *testing.T) {
 	t.Parallel()
-	influxdbtesting.AuthorizationService(initBoltAuthService, t)
+	for _, useHashedTokens := range []bool{true} {
+		init := func(f influxdbtesting.AuthorizationFields, t *testing.T) (influxdb.AuthorizationService, string, func()) {
+			return initBoltAuthService(f, useHashedTokens, t)
+		}
+		influxdbtesting.AuthorizationService(init, t)
+	}
 }

@@ -88,12 +88,13 @@ func (o *optionsV1) populateDirs() {
 }
 
 type optionsV2 struct {
-	boltPath       string
-	cliConfigsPath string
-	enginePath     string
-	cqPath         string
-	configPath     string
-	rmConflicts    bool
+	boltPath        string
+	cliConfigsPath  string
+	enginePath      string
+	cqPath          string
+	configPath      string
+	rmConflicts     bool
+	useHashedTokens bool
 
 	userName  string
 	password  string
@@ -199,6 +200,12 @@ func NewCommand(ctx context.Context, v *viper.Viper) (*cobra.Command, error) {
 			Flag:    "continuous-query-export-path",
 			Default: filepath.Join(homeOrAnyDir(), "continuous_queries.txt"),
 			Desc:    "path for exported 1.x continuous queries",
+		},
+		{
+			DestP:   &options.target.useHashedTokens,
+			Flag:    "use-hashed-tokens",
+			Default: options.target.useHashedTokens,
+			Desc:    "enable token hashing",
 		},
 		{
 			DestP:   &options.target.userName,
@@ -653,7 +660,8 @@ func newInfluxDBv2(ctx context.Context, opts *optionsV2, log *zap.Logger) (svc *
 
 	svc.ts.BucketService = storage.NewBucketService(log, svc.ts.BucketService, engine)
 
-	authStoreV2, err := authorization.NewStore(svc.store)
+	hashVariantName := authorization.DefaultHashVariantName // In the future this could come from opts.
+	authStoreV2, err := authorization.NewStore(ctx, svc.store, opts.useHashedTokens, authorization.WithAuthorizationHashVariantName(hashVariantName))
 	if err != nil {
 		return nil, err
 	}

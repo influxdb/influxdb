@@ -198,6 +198,7 @@ type InfluxdOpts struct {
 	// TemplateFileUrlsDisabled disables file protocol URIs in templates.
 	TemplateFileUrlsDisabled bool
 	StrongPasswords          bool
+	UseHashedTokens          bool
 }
 
 // NewOpts constructs options with default values.
@@ -701,6 +702,12 @@ func (o *InfluxdOpts) BindCliOpts() []cli.Opt {
 			Flag:    "strong-passwords",
 			Default: o.StrongPasswords,
 			Desc:    "enable password strength enforcement",
+		},
+		{
+			DestP:   &o.UseHashedTokens,
+			Flag:    "use-hashed-tokens",
+			Default: o.UseHashedTokens,
+			Desc:    "enable token hashing",
 		},
 	}
 }
