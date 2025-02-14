@@ -1,9 +1,11 @@
+use super::super::common::{Format, InfluxDb3Config};
 use clap::Parser;
 use influxdb3_client::Client;
 use secrecy::ExposeSecret;
 use serde::Deserialize;
-
-use super::super::common::{Format, InfluxDb3Config};
+use std::io;
+use tokio::fs::OpenOptions;
+use tokio::io::AsyncWriteExt;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
@@ -15,6 +17,15 @@ pub(crate) enum Error {
 
     #[error("system table '{0}' not found: {1}")]
     SystemTableNotFound(String, SystemTableNotFound),
+
+    #[error(
+        "must specify an output file path with `--output` parameter when formatting \
+        the output as `parquet`"
+    )]
+    NoOutputFileForParquet,
+
+    #[error("io error: {0}")]
+    Io(#[from] io::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -77,6 +88,10 @@ pub struct TableListConfig {
     /// The format in which to output the query
     #[clap(value_enum, long = "format", default_value = "pretty")]
     output_format: Format,
+
+    /// Put the table lists output into `output`
+    #[clap(short = 'o', long = "output")]
+    output_file_path: Option<String>,
 }
 
 const SYS_TABLES_QUERY: &str = "WITH cols (table_name, column_name) AS (SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'system' ORDER BY (table_name, column_name)) SELECT table_name, array_agg(column_name) AS column_names FROM cols GROUP BY table_name ORDER BY table_name";
@@ -100,14 +115,32 @@ impl std::fmt::Display for SystemTableNotFound {
 
 impl SystemCommandRunner {
     async fn list(&self, config: TableListConfig) -> Result<()> {
-        let bs = self
+        let TableListConfig {
+            output_format,
+            output_file_path,
+        } = &config;
+
+        let mut bs = self
             .client
             .api_v3_query_sql(self.db.as_str(), SYS_TABLES_QUERY)
-            .format(config.output_format.into())
+            .format(output_format.clone().into())
             .send()
             .await?;
 
-        println!("{}", String::from_utf8(bs.as_ref().to_vec()).unwrap());
+        if let Some(path) = output_file_path {
+            let mut f = OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(path)
+                .await?;
+            f.write_all_buf(&mut bs).await?;
+        } else {
+            if output_format.is_parquet() {
+                Err(Error::NoOutputFileForParquet)?
+            }
+            println!("{}", String::from_utf8(bs.as_ref().to_vec()).unwrap());
+        }
 
         Ok(())
     }
@@ -124,7 +157,7 @@ pub struct TableConfig {
     limit: u16,
 
     /// Order by the specified fields.
-    #[clap(long = "order-by", short = 'o', num_args = 1, value_delimiter = ',')]
+    #[clap(long = "order-by", num_args = 1, value_delimiter = ',')]
     order_by: Vec<String>,
 
     /// Select specified fields from table.
@@ -134,6 +167,10 @@ pub struct TableConfig {
     /// The format in which to output the query
     #[clap(value_enum, long = "format", default_value = "pretty")]
     output_format: Format,
+
+    /// Put the table output into `output`
+    #[clap(short = 'o', long = "output")]
+    output_file_path: Option<String>,
 }
 
 impl SystemCommandRunner {
@@ -157,6 +194,7 @@ impl SystemCommandRunner {
             select,
             order_by,
             output_format,
+            output_file_path,
         } = &config;
 
         let select_expr = if !select.is_empty() {
@@ -185,7 +223,7 @@ impl SystemCommandRunner {
 
         let query = clauses.join("\n");
 
-        let bs = match client
+        let mut bs = match client
             .api_v3_query_sql(db, query)
             .format(output_format.clone().into())
             .send()
@@ -205,8 +243,20 @@ impl SystemCommandRunner {
             }
         };
 
-        println!("{}", String::from_utf8(bs.as_ref().to_vec()).unwrap());
-
+        if let Some(path) = output_file_path {
+            let mut f = OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(path)
+                .await?;
+            f.write_all_buf(&mut bs).await?;
+        } else {
+            if output_format.is_parquet() {
+                Err(Error::NoOutputFileForParquet)?
+            }
+            println!("{}", String::from_utf8(bs.as_ref().to_vec()).unwrap());
+        }
         Ok(())
     }
 }
@@ -221,25 +271,44 @@ pub struct SummaryConfig {
     /// The format in which to output the query
     #[clap(value_enum, long = "format", default_value = "pretty")]
     output_format: Format,
+
+    /// Put the summary into `output`
+    #[clap(short = 'o', long = "output")]
+    output_file_path: Option<String>,
 }
 
 impl SystemCommandRunner {
     async fn summary(&self, config: SummaryConfig) -> Result<()> {
-        self.summarize_all_tables(config.limit, &config.output_format)
-            .await?;
+        self.summarize_all_tables(
+            config.limit,
+            &config.output_format,
+            &config.output_file_path,
+        )
+        .await?;
         Ok(())
     }
 
-    async fn summarize_all_tables(&self, limit: u16, format: &Format) -> Result<()> {
+    async fn summarize_all_tables(
+        &self,
+        limit: u16,
+        format: &Format,
+        output_file_path: &Option<String>,
+    ) -> Result<()> {
         let system_tables = self.get_system_tables().await?;
         for table in system_tables {
-            self.summarize_table(table.table_name.as_str(), limit, format)
+            self.summarize_table(table.table_name.as_str(), limit, format, output_file_path)
                 .await?;
         }
         Ok(())
     }
 
-    async fn summarize_table(&self, table_name: &str, limit: u16, format: &Format) -> Result<()> {
+    async fn summarize_table(
+        &self,
+        table_name: &str,
+        limit: u16,
+        format: &Format,
+        output_file_path: &Option<String>,
+    ) -> Result<()> {
         let Self { db, client } = self;
         let mut clauses = vec![format!("SELECT * FROM system.{table_name}")];
 
@@ -257,14 +326,29 @@ impl SystemCommandRunner {
 
         let query = clauses.join("\n");
 
-        let bs = client
+        let mut bs = client
             .api_v3_query_sql(db, query)
             .format(format.clone().into())
             .send()
             .await?;
 
-        println!("{table_name} summary:");
-        println!("{}", String::from_utf8(bs.as_ref().to_vec()).unwrap());
+        if let Some(path) = output_file_path {
+            let mut f = OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(path)
+                .await?;
+            f.write_all_buf(&mut bs).await?;
+        } else {
+            if format.is_parquet() {
+                Err(Error::NoOutputFileForParquet)?
+            }
+
+            println!("{table_name} summary:");
+            println!("{}", String::from_utf8(bs.as_ref().to_vec()).unwrap());
+        }
+
         Ok(())
     }
 }

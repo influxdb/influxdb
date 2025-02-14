@@ -1,0 +1,5 @@
+---
+source: influxdb3/tests/cli/mod.rs
+expression: output
+---
+Show command failed: must specify an output file path with `--output` parameter when formatting the output as `parquet`
