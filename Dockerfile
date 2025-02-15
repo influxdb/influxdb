@@ -67,12 +67,17 @@ RUN mkdir -p /usr/lib/influxdb3
 COPY --from=build /root/python /usr/lib/influxdb3/python
 RUN chown -R root:root /usr/lib/influxdb3
 
+RUN mkdir /plugins && \
+    chown influxdb3:influxdb3 /plugins
+
 USER influxdb3
 
 RUN mkdir ~/.influxdb3
 
 ARG PACKAGE=influxdb3
 ENV PACKAGE=$PACKAGE
+ENV INFLUXDB3_PLUGIN_DIR=/plugins
+ENV STANDALONE_ROOT=/usr/lib/influxdb3/python
 
 COPY --from=build "/root/$PACKAGE" "/usr/bin/$PACKAGE"
 COPY docker/entrypoint.sh /usr/bin/entrypoint.sh
