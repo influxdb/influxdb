@@ -703,36 +703,31 @@ func (s *Shard) validateSeriesAndFields(points []models.Point, tracker StatsTrac
 			continue
 		}
 
-		err := func(p models.Point, iter models.FieldIterator) error {
-			var newFields []*FieldCreate
-			var validateErr error
-			name := p.Name()
-			mf := engine.MeasurementFields(name)
-			// Check with the field validator.
-			if newFields, validateErr = ValidateFields(mf, p, s.options.Config.SkipFieldSizeValidation); validateErr != nil {
-				var err PartialWriteError
-				switch {
-				case errors.As(validateErr, &err):
-					// This will turn into an error later, outside this lambda
-					if reason == "" {
-						reason = err.Reason
-					}
-					dropped += err.Dropped
-					atomic.AddInt64(&s.stats.WritePointsDropped, int64(err.Dropped))
-				default:
-					return err
+		var newFields []*FieldCreate
+		var validateErr error
+		name := p.Name()
+		mf := engine.MeasurementFields(name)
+		// Check with the field validator.
+		if newFields, validateErr = ValidateFields(mf, p, s.options.Config.SkipFieldSizeValidation); validateErr != nil {
+			var err PartialWriteError
+			switch {
+			case errors.As(validateErr, &err):
+				// This will turn into an error later, outside this lambda
+				if reason == "" {
+					reason = err.Reason
 				}
-				return nil
+				dropped += err.Dropped
+				atomic.AddInt64(&s.stats.WritePointsDropped, int64(err.Dropped))
+				continue
+			default:
+				// Return validateErr, because err will be nil here
+				return nil, nil, validateErr
 			}
-
-			points[j] = points[i]
-			j++
-			fieldsToCreate = append(fieldsToCreate, newFields...)
-			return nil
-		}(p, iter)
-		if err != nil {
-			return nil, nil, err
 		}
+
+		points[j] = points[i]
+		j++
+		fieldsToCreate = append(fieldsToCreate, newFields...)
 	}
 	if dropped > 0 {
 		err = PartialWriteError{Reason: reason, Dropped: dropped, Database: s.database, RetentionPolicy: s.retentionPolicy}
@@ -777,7 +772,7 @@ func (s *Shard) createFieldsAndMeasurements(fieldsToCreate []*FieldCreate) (int,
 	changes := make([]*FieldChange, 0, len(fieldsToCreate))
 	for _, f := range fieldsToCreate {
 		mf := engine.MeasurementFields(f.Measurement)
-		if created, err := mf.CreateFieldIfNotExists([]byte(f.Field.Name), f.Field.Type); err != nil {
+		if created, err := mf.CreateFieldIfNotExists(f.Field.Name, f.Field.Type); err != nil {
 			return 0, err
 		} else if created {
 			numCreated++
@@ -1594,9 +1589,9 @@ func (m *MeasurementFields) bytes() int {
 
 // CreateFieldIfNotExists creates a new field with the given name and type.
 // Returns an error if the field already exists with a different type.
-func (m *MeasurementFields) CreateFieldIfNotExists(name []byte, typ influxql.DataType) (bool, error) {
+func (m *MeasurementFields) CreateFieldIfNotExists(name string, typ influxql.DataType) (bool, error) {
 	newField := &Field{
-		Name: string(name),
+		Name: name,
 		Type: typ,
 	}
 	if f, loaded := m.fields.LoadOrStore(newField.Name, newField); loaded {
@@ -1624,14 +1619,6 @@ func (m *MeasurementFields) HasField(name string) bool {
 	}
 	_, ok := m.fields.Load(name)
 	return ok
-}
-
-// FieldBytes returns the field for name, or nil if there is no field for name.
-// FieldBytes should be preferred to Field when the caller has a []byte, because
-// it avoids a string allocation, which can't be avoided if the caller converts
-// the []byte to a string and calls Field.
-func (m *MeasurementFields) FieldBytes(name []byte) *Field {
-	return m.Field(string(name))
 }
 
 // FieldSet returns the set of fields and their types for the measurement.
@@ -2271,7 +2258,7 @@ func (fs *MeasurementFieldSet) ApplyChanges() error {
 				fs.Delete(string(fc.Measurement))
 			} else {
 				mf := fs.CreateFieldsIfNotExists(fc.Measurement)
-				if _, err := mf.CreateFieldIfNotExists([]byte(fc.Field.Name), fc.Field.Type); err != nil {
+				if _, err := mf.CreateFieldIfNotExists(fc.Field.Name, fc.Field.Type); err != nil {
 					err = fmt.Errorf("failed creating %q.%q: %w", fc.Measurement, fc.Field.Name, err)
 					log.Error("field creation", zap.Error(err))
 					return err
@@ -2284,8 +2271,8 @@ func (fs *MeasurementFieldSet) ApplyChanges() error {
 
 // Field represents a series field. All of the fields must be hashable.
 type Field struct {
-	Name string            `json:"name,omitempty"`
-	Type influxql.DataType `json:"type,omitempty"`
+	Name string
+	Type influxql.DataType
 }
 
 type FieldChange struct {

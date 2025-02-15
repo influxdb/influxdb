@@ -47,12 +47,13 @@ func ValidateFields(mf *MeasurementFields, point models.Point, skipSizeValidatio
 		}
 
 		// If the field is not present, remember to create it.
-		f := mf.FieldBytes(fieldKey)
+		fieldName := string(fieldKey)
+		f := mf.Field(fieldName)
 		if f == nil {
 			fieldsToCreate = append(fieldsToCreate, &FieldCreate{
 				Measurement: point.Name(),
 				Field: &Field{
-					Name: string(fieldKey),
+					Name: fieldName,
 					Type: dataType,
 				}})
 		} else if f.Type != dataType {
@@ -60,7 +61,7 @@ func ValidateFields(mf *MeasurementFields, point models.Point, skipSizeValidatio
 			return nil, PartialWriteError{
 				Reason: fmt.Sprintf(
 					"%s: input field \"%s\" on measurement \"%s\" is type %s, already exists as type %s",
-					ErrFieldTypeConflict, fieldKey, point.Name(), dataType, f.Type),
+					ErrFieldTypeConflict, fieldName, point.Name(), dataType, f.Type),
 				Dropped: 1,
 			}
 		}

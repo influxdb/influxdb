@@ -1290,7 +1290,7 @@ func (e *Engine) addToIndexFromKey(keys [][]byte, fieldTypes []influxql.DataType
 		keys[i], field = SeriesAndFieldFromCompositeKey(keys[i])
 		name := models.ParseName(keys[i])
 		mf := e.fieldset.CreateFieldsIfNotExists(name)
-		if _, err := mf.CreateFieldIfNotExists(field, fieldTypes[i]); err != nil {
+		if _, err := mf.CreateFieldIfNotExists(string(field), fieldTypes[i]); err != nil {
 			return err
 		}
 
