@@ -19,7 +19,7 @@ use influxdb3_process::{
     build_malloc_conf, setup_metric_registry, INFLUXDB3_GIT_HASH, INFLUXDB3_VERSION, PROCESS_UUID,
 };
 use influxdb3_processing_engine::environment::{
-    DisabledManager, PipManager, PythonEnvironmentManager, UVManager,
+    DisabledManager, PipManager, PythonEnvironmentManager, StandaloneManager, UVManager,
 };
 use influxdb3_processing_engine::plugins::ProcessingEngineEnvironmentManager;
 use influxdb3_processing_engine::ProcessingEngineManagerImpl;
@@ -46,6 +46,7 @@ use object_store::ObjectStore;
 use observability_deps::tracing::*;
 use panic_logging::SendPanicsToTracing;
 use parquet_file::storage::{ParquetStorage, StorageId};
+use std::path::PathBuf;
 use std::process::Command;
 use std::{num::NonZeroUsize, sync::Arc, time::Duration};
 use std::{path::Path, str::FromStr};
@@ -648,8 +649,24 @@ pub async fn command(config: Config) -> Result<()> {
 pub(crate) fn setup_processing_engine_env_manager(
     config: &ProcessingEngineConfig,
 ) -> ProcessingEngineEnvironmentManager {
+    info!(?config, "setting up processing engine env manager");
     let package_manager: Arc<dyn PythonEnvironmentManager> = match config.package_manager {
-        PackageManager::Discover => determine_package_manager(),
+        PackageManager::Discover => {
+            if let Some(standalone_root) = &config.standalone_root {
+                Arc::new(StandaloneManager::new(PathBuf::from(standalone_root)))
+            } else {
+                determine_package_manager()
+            }
+        }
+        PackageManager::Standalone => match &config.standalone_root {
+            None => {
+                warn!("Standalone root not specified, package manager is disabled");
+                Arc::new(DisabledManager)
+            }
+            Some(standalone_path) => {
+                Arc::new(StandaloneManager::new(PathBuf::from(standalone_path)))
+            }
+        },
         PackageManager::Pip => Arc::new(PipManager),
         PackageManager::UV => Arc::new(UVManager),
     };
@@ -674,6 +691,8 @@ fn determine_package_manager() -> Arc<dyn PythonEnvironmentManager> {
             return Arc::new(PipManager);
         }
     }
+
+    // Check for
 
     // If neither is available, return DisabledManager
     Arc::new(DisabledManager)

@@ -14,7 +14,9 @@ use dotenvy::dotenv;
 use influxdb3_clap_blocks::tokio::TokioIoConfig;
 use influxdb3_process::VERSION_STRING;
 use observability_deps::tracing::warn;
+#[cfg(feature = "system-py")]
 use std::env;
+#[cfg(feature = "system-py")]
 use std::path::{Path, PathBuf};
 use trogging::{
     cli::LoggingConfigBuilderExt,
@@ -348,6 +350,7 @@ fn set_pythonhome() {
 // XXX: this should be somewhere more appropriate
 #[cfg(target_os = "windows")]
 fn set_pythonpath() {
+    use std::env;
     let exe_path = env::current_exe().unwrap();
     let exe_dir = exe_path.parent().unwrap();
     let pythonpath = exe_dir.join("python/Lib");

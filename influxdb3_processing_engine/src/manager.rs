@@ -27,9 +27,6 @@ pub enum ProcessingEngineError {
     #[error("wal error: {0}")]
     WalError(#[from] influxdb3_wal::Error),
 
-    #[error("server not started with --plugin-dir")]
-    PluginDirNotSet,
-
     #[error("plugin not found: {0}")]
     PluginNotFound(String),
 
