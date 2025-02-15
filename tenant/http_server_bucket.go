@@ -210,6 +210,10 @@ func (b *bucketUpdate) toInfluxDB() *influxdb.BucketUpdate {
 			sgd := time.Duration(*rule.ShardGroupDurationSeconds) * time.Second
 			upd.ShardGroupDuration = &sgd
 		}
+	} else if len(b.RetentionRules) == 0 {
+		rp := time.Duration(0)
+		upd.RetentionPeriod = &rp
+		upd.ShardGroupDuration = &rp
 	}
 
 	return &upd

@@ -2,6 +2,7 @@ package tenant_test
 
 import (
 	"context"
+	"fmt"
 	"net/http/httptest"
 	"testing"
 	"time"
@@ -15,8 +16,10 @@ import (
 	"github.com/influxdata/influxdb/v2/kit/platform/errors"
 	"github.com/influxdata/influxdb/v2/kv"
 	"github.com/influxdata/influxdb/v2/mock"
+	"github.com/influxdata/influxdb/v2/pkg/httpc"
 	"github.com/influxdata/influxdb/v2/tenant"
 	itesting "github.com/influxdata/influxdb/v2/testing"
+	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap/zaptest"
 )
 
@@ -207,4 +210,80 @@ func TestHTTPBucketService_InvalidRetention(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRetentionNever(t *testing.T) {
+	id := mock.NewStaticIDGenerator(idOne)
+	orgID := mock.NewStaticIDGenerator(idOne)
+	bucket := &influxdb.Bucket{
+		ID:                  id.ID(),
+		OrgID:               orgID.ID(),
+		Type:                influxdb.BucketTypeUser,
+		Name:                "bucket",
+		Description:         "words",
+		RetentionPolicyName: "",
+		RetentionPeriod:     time.Duration(60) * time.Minute,
+		ShardGroupDuration:  time.Duration(24) * time.Hour,
+	}
+	store := tenant.NewStore(itesting.NewTestInmemStore(t))
+	ctx := context.Background()
+	err := store.Update(ctx, func(tx kv.Tx) error {
+		if err := store.CreateBucket(tx.Context(), tx, bucket); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("failed to seed data: %s", err)
+	}
+
+	client, closeServer := initHttpClient(t, store)
+	defer closeServer()
+
+	var b *influxdb.Bucket
+	err = store.View(ctx, func(tx kv.Tx) error {
+		b, err = store.GetBucket(tx.Context(), tx, bucket.ID)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+	bucketUpdate := map[string]any{
+		"type":           "user",
+		"orgID":          b.OrgID,
+		"id":             b.ID,
+		"name":           b.Name,
+		"retentionRules": []map[string]any{},
+	}
+	err = client.PatchJSON(bucketUpdate, fmt.Sprintf("/api/v2/buckets/%s", b.ID.String())).Do(ctx)
+	if err != nil {
+		t.Fatalf("failed to patch bucket: %s", err)
+	}
+
+	err = store.View(ctx, func(tx kv.Tx) error {
+		b, err = store.GetBucket(tx.Context(), tx, bucket.ID)
+		if err != nil {
+			return err
+		}
+		assert.Equal(t, b.RetentionPeriod, time.Duration(0))
+		assert.Equal(t, b.ShardGroupDuration, time.Duration(0))
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("failed to seed data: %s", err)
+	}
+}
+
+func initHttpClient(t *testing.T, store *tenant.Store) (*httpc.Client, func()) {
+	handler := tenant.NewHTTPBucketHandler(zaptest.NewLogger(t), tenant.NewService(store), nil, nil, nil)
+	r := chi.NewRouter()
+	r.Mount(handler.Prefix(), handler)
+	server := httptest.NewServer(r)
+
+	client, err := ihttp.NewHTTPClient(server.URL, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return client, server.Close
 }
