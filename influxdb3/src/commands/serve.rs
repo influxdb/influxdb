@@ -46,9 +46,13 @@ use object_store::ObjectStore;
 use observability_deps::tracing::*;
 use panic_logging::SendPanicsToTracing;
 use parquet_file::storage::{ParquetStorage, StorageId};
+use std::env;
 use std::process::Command;
 use std::{num::NonZeroUsize, sync::Arc, time::Duration};
-use std::{path::Path, str::FromStr};
+use std::{
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 use thiserror::Error;
 use tokio::net::TcpListener;
 use tokio::time::Instant;
@@ -669,7 +673,29 @@ fn determine_package_manager() -> Arc<dyn PythonEnvironmentManager> {
     }
 
     // Check for pip second
-    if let Ok(output) = Command::new("pip").arg("--version").output() {
+    // XXX: put this somewhere common
+    let python_exe_bn = if cfg!(windows) {
+        "python.exe"
+    } else {
+        "python3"
+    };
+    let python_exe = if let Ok(v) = env::var("PYTHONHOME") {
+        // honor PYTHONHOME (set earlier for python standalone). python build
+        // standalone has bin/python3 on OSX/Linx and python.exe on Windows
+        let mut path = PathBuf::from(v);
+        if !cfg!(windows) {
+            path.push("bin");
+        }
+        path.push(python_exe_bn);
+        path
+    } else {
+        PathBuf::from(python_exe_bn)
+    };
+
+    if let Ok(output) = Command::new(python_exe)
+        .args(["-m", "pip", "--version"])
+        .output()
+    {
         if output.status.success() {
             return Arc::new(PipManager);
         }

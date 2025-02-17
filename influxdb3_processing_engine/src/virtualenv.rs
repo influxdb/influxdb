@@ -1,7 +1,8 @@
 use observability_deps::tracing::debug;
 use pyo3::Python;
+use std::env;
 use std::ffi::CString;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Once;
 use thiserror::Error;
@@ -17,11 +18,23 @@ pub enum VenvError {
 }
 
 fn get_python_version() -> Result<(u8, u8), std::io::Error> {
-    // linux/osx have python3, but windows only has python
-    let python_exe = if cfg!(target_os = "windows") {
-        "python"
+    // XXX: put this somewhere common
+    let python_exe_bn = if cfg!(windows) {
+        "python.exe"
     } else {
         "python3"
+    };
+    let python_exe = if let Ok(v) = env::var("VIRTUAL_ENV") {
+        let mut path = PathBuf::from(v);
+        if cfg!(windows) {
+            path.push("Scripts");
+        } else {
+            path.push("bin");
+        }
+        path.push(python_exe_bn);
+        path
+    } else {
+        PathBuf::from(python_exe_bn)
     };
 
     let output = Command::new(python_exe)
